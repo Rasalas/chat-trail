@@ -15,7 +15,7 @@ export type ContentBlock =
   | { type: "code"; language?: string; text: string }
   | { type: "table"; markdown: string }
   | { type: "quote"; text: string; url?: string }
-  | { type: "image"; alt?: string; src?: string; filename?: string }
+  | { type: "image"; alt?: string; src?: string; filename?: string; data_url?: string; mime_type?: string }
   | { type: "link"; text: string; url: string };
 
 export interface SourceMetadata {
@@ -41,7 +41,7 @@ export interface ChatMessage {
 
 export interface Artifact {
   id: string;
-  type: "html_snapshot" | "screenshot" | "attachment" | "source";
+  type: "html_snapshot" | "screenshot" | "attachment" | "source" | "image";
   filename: string;
   mime_type: string;
   bytes?: number;

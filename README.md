@@ -28,6 +28,25 @@ make dev
 
 Keep `dist/chrome/` loaded as the unpacked extension. Chrome may still require pressing the extension reload button after a rebuild, especially for manifest, content-script, and service-worker changes.
 
+## Releases
+
+Create a local Chrome extension ZIP:
+
+```bash
+make release-local
+```
+
+This writes `releases/chat-trail-chrome-v<version>.zip`.
+
+Create a tagged release:
+
+```bash
+make release
+git push && git push origin v<version>
+```
+
+`make release` suggests `major`, `minor`, or `patch` from Conventional Commits since the last tag, updates `package.json`, `package-lock.json`, and `public/manifest.json`, then creates a release commit and tag. Pushing the tag triggers the GitHub release workflow.
+
 ## Current Provider Coverage
 
 - Dedicated adapters: ChatGPT, Claude

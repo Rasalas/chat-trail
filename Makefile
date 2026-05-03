@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: install build dev typecheck clean
+.PHONY: install build dev typecheck clean release-local release
 
 install:
 	npm install
@@ -16,3 +16,9 @@ typecheck:
 
 clean:
 	rm -rf dist
+
+release-local:
+	sh scripts/release-local.sh
+
+release:
+	sh scripts/release.sh

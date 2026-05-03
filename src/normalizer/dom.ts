@@ -26,7 +26,7 @@ export async function elementToMessage(
   index: number,
   selector?: string
 ): Promise<ChatMessage | null> {
-  const content = extractContentBlocks(element);
+  const content = await extractContentBlocks(element);
   const visibleText = contentToPlainText(content);
 
   if (!visibleText && content.length === 0) {
@@ -46,12 +46,9 @@ export async function elementToMessage(
   };
 }
 
-export function extractContentBlocks(root: Element): ContentBlock[] {
-  const clone = root.cloneNode(true) as Element;
-  clone.querySelectorAll("script, style, noscript, button, svg, [aria-hidden='true']").forEach((node) => node.remove());
-
+export async function extractContentBlocks(root: Element): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [];
-  collectBlocksInOrder(clone, blocks);
+  await collectBlocksInOrder(root, blocks);
 
   return mergeAdjacentText(blocks.filter((block) => {
     if (block.type === "text") return block.text.length > 0;
@@ -142,7 +139,7 @@ function tableToMarkdown(table: HTMLTableElement): string {
     .join("\n");
 }
 
-function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): void {
+async function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): Promise<void> {
   for (const child of root.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       const text = compactWhitespace(child.textContent ?? "");
@@ -179,7 +176,17 @@ function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): void {
       const img = child as HTMLImageElement;
       const src = img.currentSrc || img.src;
       const alt = img.alt || img.title;
-      if (src || alt) blocks.push({ type: "image", src, alt, filename: filenameFromUrl(src) });
+      const data_url = await imageToDataUrl(img);
+      if (src || alt || data_url) {
+        blocks.push({
+          type: "image",
+          src,
+          alt,
+          filename: filenameFromUrl(src),
+          data_url,
+          mime_type: data_url ? mimeTypeFromDataUrl(data_url) : undefined
+        });
+      }
       continue;
     }
 
@@ -189,7 +196,7 @@ function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): void {
       continue;
     }
 
-    collectBlocksInOrder(child, blocks);
+    await collectBlocksInOrder(child, blocks);
   }
 }
 
@@ -264,6 +271,56 @@ function filenameFromUrl(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function imageToDataUrl(image: HTMLImageElement): Promise<string | undefined> {
+  const src = image.currentSrc || image.src;
+  if (!src) return undefined;
+  if (src.startsWith("data:image/")) return src;
+
+  if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+    await waitForImage(image);
+  }
+
+  if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) return undefined;
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(image, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return undefined;
+  }
+}
+
+function waitForImage(image: HTMLImageElement): Promise<void> {
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(resolve, 800);
+    image.addEventListener(
+      "load",
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      { once: true }
+    );
+    image.addEventListener(
+      "error",
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}
+
+function mimeTypeFromDataUrl(dataUrl: string): string | undefined {
+  return dataUrl.match(/^data:([^;]+);base64,/)?.[1];
 }
 
 function mergeAdjacentText(blocks: ContentBlock[]): ContentBlock[] {
