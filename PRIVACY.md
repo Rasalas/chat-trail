@@ -8,9 +8,13 @@ Chat Trail does not collect, sell, share, or transmit personal data to any exter
 
 When you initiate an export, Chat Trail reads content from the currently active tab in your browser. This can include visible chat messages, visible links, visible images, the page title, the page URL, and optional evidence metadata such as export time, a screenshot, and an HTML snapshot.
 
+This website content is used only to provide the export feature you requested. Chat Trail does not use this content for analytics, advertising, profiling, model training, resale, or any purpose unrelated to creating the local export.
+
 ## Local Processing
 
 All extraction and export processing happens locally in your browser. Exports are downloaded to your device as files such as Markdown, JSON, HTML, or ZIP evidence packs.
+
+Chat Trail does not run a backend service for receiving, storing, or processing your exported chat content.
 
 ## Optional Clipboard Use
 
