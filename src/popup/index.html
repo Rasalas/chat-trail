@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Trail</title>
+  </head>
+  <body>
+    <main class="popup-shell">
+      <section class="brand">
+        <div>
+          <p class="kicker">Local export</p>
+          <h1>Chat Trail</h1>
+        </div>
+        <span id="status-dot" class="status-dot"></span>
+      </section>
+
+      <p id="status" class="status">Ready to read the active tab.</p>
+
+      <section class="actions">
+        <button id="quick-md" class="primary" type="button">
+          <span>Quick Markdown</span>
+        </button>
+        <button id="open-review" type="button">
+          <span>Review Export</span>
+        </button>
+        <button id="select-container" type="button">
+          <span>Select Container</span>
+        </button>
+      </section>
+
+      <section class="privacy">
+        <strong>No cloud path.</strong>
+        <span>Runs on the current page only. No API keys, account crawl, or cookie export.</span>
+      </section>
+    </main>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

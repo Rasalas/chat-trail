@@ -1,0 +1,24 @@
+{
+  "name": "chat-trail",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first browser extension for exporting AI chat conversations with evidence packs.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "browser-extension",
+    "chat-export",
+    "ai",
+    "evidence"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chrome": "^0.0.309",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4"
+  }
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Trail Review</title>
+  </head>
+  <body>
+    <main class="review-shell">
+      <header class="topbar">
+        <div>
+          <p class="kicker">Evidence workspace</p>
+          <h1>Review Export</h1>
+        </div>
+        <div class="export-actions">
+          <button id="refresh" type="button">Refresh</button>
+          <button id="export-md" type="button">Markdown</button>
+          <button id="export-json" type="button">JSON</button>
+          <button id="export-html" type="button">HTML</button>
+          <button id="print-pdf" type="button">Print/PDF</button>
+          <button id="export-zip" class="primary" type="button">Evidence ZIP</button>
+        </div>
+      </header>
+
+      <section class="summary" id="summary">Waiting for the active tab.</section>
+
+      <section class="workspace">
+        <aside class="options" aria-label="Export options">
+          <h2>Options</h2>
+          <label><input type="checkbox" data-option="includeUser" checked /> User messages</label>
+          <label><input type="checkbox" data-option="includeAssistant" checked /> Assistant messages</label>
+          <label><input type="checkbox" data-option="includeCode" checked /> Code blocks</label>
+          <label><input type="checkbox" data-option="includeTables" checked /> Tables</label>
+          <label><input type="checkbox" data-option="includeCitations" checked /> Links and quotes</label>
+          <label><input type="checkbox" data-option="includeImages" checked /> Images and filenames</label>
+          <label><input type="checkbox" data-option="includeMetadata" checked /> Metadata</label>
+          <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
+          <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
+          <button id="select-all" type="button">Select All</button>
+          <button id="select-none" type="button">Select None</button>
+          <button id="redact-now" type="button">Redact Visible Text</button>
+          <button id="clipboard-import" type="button">Clipboard Import</button>
+        </aside>
+
+        <section class="messages" id="messages" aria-live="polite"></section>
+      </section>
+    </main>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
