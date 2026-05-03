@@ -89,7 +89,3 @@ git push && git push origin v<version>
 ## Privacy Model
 
 Chat Trail runs locally in the browser. It exports only the currently open page at user request. It does not call private provider APIs, crawl accounts, sync to a server, or read cookies/session tokens.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
