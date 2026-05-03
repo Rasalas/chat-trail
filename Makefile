@@ -18,10 +18,10 @@ clean:
 	rm -rf dist
 
 icons:
-	magick -background none assets/icons/icon.svg -resize 128x128 public/icons/icon-128.png
-	magick -background none assets/icons/icon.svg -resize 48x48 public/icons/icon-48.png
-	magick -background none assets/icons/icon.svg -resize 32x32 public/icons/icon-32.png
-	magick -background none assets/icons/icon.svg -resize 16x16 public/icons/icon-16.png
+	rsvg-convert -w 128 -h 128 assets/icons/icon.svg -o public/icons/icon-128.png
+	rsvg-convert -w 48 -h 48 assets/icons/icon.svg -o public/icons/icon-48.png
+	rsvg-convert -w 32 -h 32 assets/icons/icon.svg -o public/icons/icon-32.png
+	rsvg-convert -w 16 -h 16 assets/icons/icon.svg -o public/icons/icon-16.png
 
 release-local:
 	sh scripts/release-local.sh
