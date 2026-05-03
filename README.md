@@ -19,6 +19,30 @@ npm run build
 
 Load `dist/chrome/` as an unpacked extension in Chrome or another Chromium browser.
 
+## Install Without Chrome Web Store
+
+You can test Chat Trail from a release ZIP or from a local build.
+
+### From a release ZIP
+
+1. Download `chat-trail-chrome-v<version>.zip` from the GitHub release.
+2. Unzip it somewhere stable, for example `~/Extensions/chat-trail`.
+3. Open `chrome://extensions`.
+4. Enable **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the unzipped folder that directly contains `manifest.json`.
+
+Chrome cannot install this ZIP directly from disk. For manual testing, it must be unzipped and loaded as an unpacked extension.
+
+### From a local build
+
+```bash
+npm install
+make build
+```
+
+Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `dist/chrome/`.
+
 For extension development with rebuild-on-change:
 
 ```bash
@@ -65,3 +89,7 @@ git push && git push origin v<version>
 ## Privacy Model
 
 Chat Trail runs locally in the browser. It exports only the currently open page at user request. It does not call private provider APIs, crawl accounts, sync to a server, or read cookies/session tokens.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
