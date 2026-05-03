@@ -1,40 +1,50 @@
 import { ChatAdapter } from "../shared/types";
 import { ConversationExport, ChatMessage } from "../shared/types";
+import { setProviderCopyEnabled } from "../normalizer/copy-enhancement";
 
 const SCROLL_SETTLE_MS = 450;
 const MAX_STEPS = 90;
 
-export async function extractWithScrollCapture(adapter: ChatAdapter, document: Document): Promise<ConversationExport> {
-  const scroller = findPrimaryScroller(document);
-  const originalTop = scroller.scrollTop;
-  const snapshots: ConversationExport[] = [];
+export async function extractWithScrollCapture(
+  adapter: ChatAdapter,
+  document: Document,
+  options: { useProviderCopy?: boolean } = {}
+): Promise<ConversationExport> {
+  setProviderCopyEnabled(Boolean(options.useProviderCopy));
+  try {
+    const scroller = findPrimaryScroller(document);
+    const originalTop = scroller.scrollTop;
+    const snapshots: ConversationExport[] = [];
 
-  await scrollAndWait(scroller, 0);
+    await scrollAndWait(scroller, 0);
 
-  let previousTop = -1;
-  let stableSteps = 0;
+    let previousTop = -1;
+    let stableSteps = 0;
 
-  for (let step = 0; step < MAX_STEPS; step += 1) {
-    snapshots.push(await adapter.extract(document));
+    for (let step = 0; step < MAX_STEPS; step += 1) {
+      snapshots.push(await adapter.extract(document));
 
-    const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    const nextTop = Math.min(maxTop, scroller.scrollTop + Math.max(420, Math.floor(scroller.clientHeight * 0.82)));
+      const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const nextTop = Math.min(maxTop, scroller.scrollTop + Math.max(420, Math.floor(scroller.clientHeight * 0.82)));
 
-    if (nextTop === previousTop || nextTop >= maxTop) {
-      stableSteps += 1;
-    } else {
-      stableSteps = 0;
+      if (nextTop === previousTop || nextTop >= maxTop) {
+        stableSteps += 1;
+      } else {
+        stableSteps = 0;
+      }
+
+      if (stableSteps >= 2) break;
+
+      previousTop = nextTop;
+      await scrollAndWait(scroller, nextTop);
     }
 
-    if (stableSteps >= 2) break;
+    await scrollAndWait(scroller, Math.min(originalTop, Math.max(0, scroller.scrollHeight - scroller.clientHeight)), 120);
 
-    previousTop = nextTop;
-    await scrollAndWait(scroller, nextTop);
+    return mergeSnapshots(snapshots);
+  } finally {
+    setProviderCopyEnabled(false);
   }
-
-  await scrollAndWait(scroller, Math.min(originalTop, Math.max(0, scroller.scrollHeight - scroller.clientHeight)), 120);
-
-  return mergeSnapshots(snapshots);
 }
 
 function findPrimaryScroller(document: Document): HTMLElement {

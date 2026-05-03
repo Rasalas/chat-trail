@@ -4,7 +4,7 @@ import { extractWithScrollCapture } from "./scroll-capture";
 import { RuntimeResponse } from "../shared/types";
 
 type RuntimeMessage =
-  | { type: "EXTRACT_CONVERSATION" }
+  | { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }
   | { type: "GET_HTML_SNAPSHOT" }
   | { type: "START_CONTAINER_SELECTION" };
 
@@ -34,7 +34,7 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse |
   }
 
   const adapter = selectAdapter(new URL(document.location.href), document);
-  const conversation = await extractWithScrollCapture(adapter, document);
+  const conversation = await extractWithScrollCapture(adapter, document, { useProviderCopy: Boolean(message.useProviderCopy) });
   return {
     ok: true,
     conversation,

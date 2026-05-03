@@ -21,7 +21,7 @@ setStatus("Ready to read the active tab.", "ready");
 
 async function quickExport(): Promise<void> {
   await withBusy("Extracting transcript...", async () => {
-    const response = await sendToActiveTab({ type: "EXTRACT_CONVERSATION" });
+    const response = await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: false });
     if (!response.ok) throw new Error(response.error);
     const filtered = applyExportOptions(response.conversation, DEFAULT_EXPORT_OPTIONS);
     const markdown = exportMarkdown(filtered);

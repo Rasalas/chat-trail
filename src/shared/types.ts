@@ -36,6 +36,7 @@ export interface ChatMessage {
     selector?: string;
     index?: number;
     visibleTextHash?: string;
+    extractionMethod?: "dom" | "provider-copy";
   };
 }
 
@@ -90,6 +91,7 @@ export interface ExportOptions {
   includeMetadata: boolean;
   anonymizeUrl: boolean;
   redactSecrets: boolean;
+  useProviderCopy: boolean;
 }
 
 export interface ExtractionResult {
@@ -115,5 +117,6 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeImages: true,
   includeMetadata: true,
   anonymizeUrl: false,
-  redactSecrets: true
+  redactSecrets: true,
+  useProviderCopy: false
 };

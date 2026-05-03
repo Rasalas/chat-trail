@@ -1,5 +1,6 @@
 import { ChatAdapter, ChatMessage } from "../shared/types";
 import { createBaseConversation, elementToMessage, uniqueElements } from "../normalizer/dom";
+import { enhanceMessageWithProviderCopy } from "../normalizer/copy-enhancement";
 
 export const chatGptAdapter: ChatAdapter = {
   id: "chatgpt",
@@ -31,7 +32,7 @@ export const chatGptAdapter: ChatAdapter = {
       const message = await elementToMessage(messageRoot, role, index, selectorFor(element));
       if (message) {
         message.metadata.model = role === "assistant" ? model : undefined;
-        messages.push(message);
+        messages.push(await enhanceMessageWithProviderCopy(message, element));
       }
     }
 

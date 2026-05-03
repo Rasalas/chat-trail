@@ -1,4 +1,5 @@
 import { ChatAdapter } from "../shared/types";
+import { enhanceMessageWithProviderCopy } from "../normalizer/copy-enhancement";
 import { createBaseConversation, elementToMessage, inferRole, uniqueElements } from "../normalizer/dom";
 
 export const claudeAdapter: ChatAdapter = {
@@ -38,7 +39,7 @@ export const claudeAdapter: ChatAdapter = {
       const message = await elementToMessage(element, role, index, selectorFor(element));
       if (message) {
         message.metadata.model = role === "assistant" ? model : undefined;
-        messages.push(message);
+        messages.push(await enhanceMessageWithProviderCopy(message, element));
       }
     }
 

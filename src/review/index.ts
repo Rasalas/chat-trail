@@ -52,6 +52,9 @@ selectNoneButton.addEventListener("click", () => selectMessages("none"));
 redactButton.addEventListener("click", redactVisibleText);
 clipboardButton.addEventListener("click", () => void importClipboard());
 optionInputs.forEach((input) => input.addEventListener("change", render));
+optionInputs
+  .find((input) => input.dataset.option === "useProviderCopy")
+  ?.addEventListener("change", () => void loadConversation(false));
 
 void loadConversation(true);
 
@@ -59,7 +62,9 @@ async function loadConversation(preferManualSelection: boolean): Promise<void> {
   await withBusy("Reading current tab...", async () => {
     const stored = preferManualSelection ? await chrome.storage.session.get("manualSelection") : {};
     const storedResponse = stored.manualSelection as RuntimeResponse | undefined;
-    const response = storedResponse?.ok ? storedResponse : await sendToActiveTab({ type: "EXTRACT_CONVERSATION" });
+    const response = storedResponse?.ok
+      ? storedResponse
+      : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: readOptions().useProviderCopy });
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();
