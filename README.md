@@ -52,6 +52,12 @@ make dev
 
 Keep `dist/chrome/` loaded as the unpacked extension. Chrome may still require pressing the extension reload button after a rebuild, especially for manifest, content-script, and service-worker changes.
 
+Regenerate extension icons from the editable SVG source:
+
+```bash
+make icons
+```
+
 ## Releases
 
 Create a local Chrome extension ZIP:
