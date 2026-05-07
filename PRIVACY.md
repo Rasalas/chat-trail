@@ -22,7 +22,7 @@ The default extraction mode reads the page DOM. In the review workflow, you may 
 
 ## Permissions
 
-Chat Trail requests broad host access so it can work on different AI-chat-like websites and generic web chat pages. It uses the active tab at your request, injects content scripts when needed, stores temporary review state locally, and downloads export files locally.
+Chat Trail uses the active tab at your request, injects content scripts only after a user action when needed, stores temporary review state locally, and downloads export files locally.
 
 ## Remote Services
 

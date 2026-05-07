@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chat Trail",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Export AI chat conversations locally as Markdown, JSON, HTML, or an evidence ZIP.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -23,25 +23,10 @@
     "service_worker": "assets/background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content-loader.js"
-      ],
-      "run_at": "document_idle"
-    }
-  ],
   "permissions": [
     "activeTab",
     "scripting",
-    "storage",
-    "tabs"
-  ],
-  "host_permissions": [
-    "<all_urls>"
+    "storage"
   ],
   "web_accessible_resources": [
     {
