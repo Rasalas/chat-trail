@@ -19,7 +19,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 
 async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse | { ok: true; html: string }> {
   if (message.type === "GET_HTML_SNAPSHOT") {
-    return { ok: true, html: document.documentElement.outerHTML };
+    return { ok: true, html: snapshotHtml() };
   }
 
   if (message.type === "START_CONTAINER_SELECTION") {
@@ -41,6 +41,14 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse |
     adapterId: adapter.id,
     adapterLabel: adapter.label
   };
+}
+
+export function snapshotHtml(): string {
+  const clone = document.documentElement.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll("script, noscript, template, link[rel='preload'][as='script']")
+    .forEach((element) => element.remove());
+  return `<!doctype html>\n${clone.outerHTML}`;
 }
 
 function pickContainer(): Promise<Element> {
