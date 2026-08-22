@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -14,4 +15,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Verify package.json and manifest version sync
+        run: |
+          node -e "
+            const pkg = require('./package.json').version;
+            const manifest = require('./public/manifest.json').version;
+            if (pkg !== manifest) {
+              console.error('Version drift: package.json', pkg, '!= manifest.json', manifest);
+              process.exit(1);
+            }
+          "
