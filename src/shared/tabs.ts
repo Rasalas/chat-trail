@@ -15,7 +15,7 @@ export async function sendToTabWithContentScript(tabId: number, message: object)
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ["content-loader.js"]
+      files: ["assets/content.js"]
     });
     return await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {

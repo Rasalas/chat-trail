@@ -27,16 +27,5 @@
     "activeTab",
     "scripting",
     "storage"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/review/index.html",
-        "assets/*.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
   ]
 }
