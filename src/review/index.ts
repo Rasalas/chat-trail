@@ -25,6 +25,7 @@ const selectAllButton = document.querySelector<HTMLButtonElement>("#select-all")
 const selectNoneButton = document.querySelector<HTMLButtonElement>("#select-none")!;
 const redactButton = document.querySelector<HTMLButtonElement>("#redact-now")!;
 const clipboardButton = document.querySelector<HTMLButtonElement>("#clipboard-import")!;
+const clipboardNote = document.querySelector<HTMLElement>("#clipboard-note")!;
 const optionInputs = [...document.querySelectorAll<HTMLInputElement>("[data-option]")];
 const actionButtons = [
   refreshButton,
@@ -56,17 +57,30 @@ clipboardButton.addEventListener("click", () => void importClipboard());
 optionInputs.forEach((input) => input.addEventListener("change", render));
 optionInputs
   .find((input) => input.dataset.option === "useProviderCopy")
-  ?.addEventListener("change", () => void loadConversation(false));
+  ?.addEventListener("change", () => {
+    syncClipboardNote();
+    void loadConversation(false);
+  });
 
+syncClipboardNote();
 void loadConversation(true);
 
+function syncClipboardNote(): void {
+  const useProviderCopy = optionInputs.find((input) => input.dataset.option === "useProviderCopy");
+  clipboardNote.hidden = !useProviderCopy?.checked;
+}
+
 async function loadConversation(preferManualSelection: boolean): Promise<void> {
-  await withBusy(actionButtons, showSummary, "Reading current tab...", async () => {
+  const options = readOptions();
+  const label = options.useProviderCopy
+    ? "Reading current tab... (copy buttons are clicked; the clipboard is read and restored)"
+    : "Reading current tab...";
+  await withBusy(actionButtons, showSummary, label, async () => {
     const stored = preferManualSelection ? await chrome.storage.session.get("manualSelection") : {};
     const storedResponse = stored.manualSelection as RuntimeResponse | undefined;
     const response = storedResponse?.ok
       ? storedResponse
-      : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: readOptions().useProviderCopy });
+      : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: options.useProviderCopy });
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();

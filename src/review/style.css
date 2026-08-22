@@ -134,6 +134,14 @@ h2 {
   font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.clipboard-note[hidden] {
+  display: none;
+}
+
+.clipboard-note:not([hidden]) {
+  color: #7a4a1f;
+}
+
 .options input {
   accent-color: #0d6b57;
 }
