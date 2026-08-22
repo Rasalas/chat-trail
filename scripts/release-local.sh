@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 rm -f "$ZIP_PATH"
 
 if command -v zip >/dev/null 2>&1; then
-  (cd dist/chrome && zip -qr "../../${ZIP_PATH}" .)
+  (cd dist/chrome && zip -qr "../../${ZIP_PATH}" . -x '*.map' -x '*.DS_Store')
 else
   echo "zip command not found. Install zip or run on macOS/Linux with zip available." >&2
   exit 1

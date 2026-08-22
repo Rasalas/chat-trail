@@ -5,3 +5,4 @@ dist/
 releases/
 .playwright-cli/
 *~lock~
+.private/
