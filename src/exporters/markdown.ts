@@ -61,8 +61,6 @@ function renderBlock(block: ContentBlock): string {
       return `> ${block.text.replace(/\n/g, "\n> ")}`;
     case "image":
       return `![${block.alt ?? block.filename ?? "image"}](${block.src ?? block.filename ?? ""})`;
-    case "link":
-      return `[${block.text}](${block.url})`;
   }
 }
 

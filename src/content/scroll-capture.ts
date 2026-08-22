@@ -1,6 +1,5 @@
-import { ChatAdapter } from "../shared/types";
-import { ConversationExport, ChatMessage } from "../shared/types";
 import { setProviderCopyEnabled } from "../normalizer/copy-enhancement";
+import { ChatAdapter, ChatMessage, ConversationExport } from "../shared/types";
 
 const SCROLL_SETTLE_MS = 450;
 const MAX_STEPS = 90;
@@ -109,7 +108,6 @@ function plainKey(message: ChatMessage): string {
     .map((block) => {
       if (block.type === "text" || block.type === "code" || block.type === "quote") return block.text;
       if (block.type === "table") return block.markdown;
-      if (block.type === "link") return `${block.text}:${block.url}`;
       return `${block.alt ?? ""}:${block.src ?? ""}:${block.filename ?? ""}`;
     })
     .join("\n")

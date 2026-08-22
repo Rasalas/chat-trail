@@ -34,7 +34,7 @@ function filterMessage(message: ChatMessage, options: ExportOptions): ChatMessag
 function includeBlock(block: ContentBlock, options: ExportOptions): boolean {
   if (block.type === "code") return options.includeCode;
   if (block.type === "table") return options.includeTables;
-  if (block.type === "quote" || block.type === "link") return options.includeCitations;
+  if (block.type === "quote") return options.includeCitations;
   if (block.type === "image") return options.includeImages;
   return true;
 }
@@ -44,6 +44,5 @@ function redactBlock(block: ContentBlock): ContentBlock {
     return { ...block, text: redactText(block.text) };
   }
   if (block.type === "table") return { ...block, markdown: redactText(block.markdown) };
-  if (block.type === "link") return { ...block, text: redactText(block.text), url: redactText(block.url) };
   return { ...block, alt: block.alt ? redactText(block.alt) : undefined, filename: block.filename ? redactText(block.filename) : undefined };
 }

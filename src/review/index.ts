@@ -9,7 +9,8 @@ import { contentToPlainText } from "../normalizer/dom";
 import { redactText } from "../shared/redaction";
 import { slugify } from "../shared/strings";
 import { sha256Hex, stableId } from "../shared/hash";
-import { readableTabError, sendToTabWithContentScript } from "../shared/tabs";
+import { readableTabError, getActiveTabId, sendToTabWithContentScript } from "../shared/tabs";
+import { withBusy } from "../shared/ui";
 import { ChatMessage, ConversationExport, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
@@ -59,7 +60,7 @@ optionInputs
 void loadConversation(true);
 
 async function loadConversation(preferManualSelection: boolean): Promise<void> {
-  await withBusy("Reading current tab...", async () => {
+  await withBusy(actionButtons, showSummary, "Reading current tab...", async () => {
     const stored = preferManualSelection ? await chrome.storage.session.get("manualSelection") : {};
     const storedResponse = stored.manualSelection as RuntimeResponse | undefined;
     const response = storedResponse?.ok
@@ -127,7 +128,7 @@ function render(): void {
 
 async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): Promise<void> {
   if (!conversation) return;
-  await withBusy(`Preparing ${format.toUpperCase()}...`, async () => {
+  await withBusy(actionButtons, showSummary, `Preparing ${format.toUpperCase()}...`, async () => {
     const prepared = applyExportOptions(pickSelectedMessages(readEditedConversation()), readOptions());
     const baseName = slugify(prepared.source.title);
 
@@ -146,7 +147,7 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
         htmlSnapshot: snapshot,
         screenshotDataUrl: screenshot,
         browser: navigator.userAgent,
-        platform: navigator.platform
+        platform: (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
       });
       downloadBlob(zip, `${baseName}-evidence.zip`);
     }
@@ -156,7 +157,7 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
 }
 
 async function importClipboard(): Promise<void> {
-  await withBusy("Reading clipboard text...", async () => {
+  await withBusy(actionButtons, showSummary, "Reading clipboard text...", async () => {
     const text = await navigator.clipboard.readText();
     if (!text.trim()) throw new Error("Clipboard is empty.");
     conversation = await conversationFromClipboard(text);
@@ -192,7 +193,7 @@ function readOptions(): ExportOptions {
   const options: ExportOptions = { ...DEFAULT_EXPORT_OPTIONS };
   for (const input of optionInputs) {
     const key = input.dataset.option as keyof ExportOptions;
-    options[key] = input.checked;
+    if (key in DEFAULT_EXPORT_OPTIONS) options[key] = input.checked;
   }
   return options;
 }
@@ -317,22 +318,9 @@ async function captureScreenshot(): Promise<string | undefined> {
 async function getSourceTabId(): Promise<number | undefined> {
   const stored = await chrome.storage.session.get("sourceTabId");
   if (typeof stored.sourceTabId === "number") return stored.sourceTabId;
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  return tab?.id;
+  return getActiveTabId();
 }
 
-async function withBusy(label: string, task: () => Promise<void>): Promise<void> {
-  actionButtons.forEach((button) => {
-    button.disabled = true;
-  });
-  summary.textContent = label;
-  try {
-    await task();
-  } catch (error) {
-    summary.textContent = error instanceof Error ? error.message : String(error);
-  } finally {
-    actionButtons.forEach((button) => {
-      button.disabled = false;
-    });
-  }
+function showSummary(text: string): void {
+  summary.textContent = text;
 }

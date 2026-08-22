@@ -1,5 +1,5 @@
 import { ChatAdapter, ProviderId } from "../shared/types";
-import { createBaseConversation, elementToMessage, inferRole, uniqueElements } from "../normalizer/dom";
+import { createBaseConversation, elementToMessage, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
 
 interface HostedProvider {
   id: ProviderId;
@@ -63,11 +63,4 @@ function findModel(document: Document, pattern?: RegExp): string | undefined {
   return [...document.querySelectorAll("button, [aria-label], header, nav")]
     .map((node) => node.textContent?.trim().replace(/\s+/g, " "))
     .find((text) => text && text.length < 80 && pattern.test(text));
-}
-
-function selectorFor(element: Element): string {
-  const testId = element.getAttribute("data-testid");
-  if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-  const id = element.id ? `#${CSS.escape(element.id)}` : "";
-  return id || element.tagName.toLowerCase();
 }

@@ -71,8 +71,6 @@ function renderBlock(block: ContentBlock): string {
       return block.src
         ? `<figure><img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}"><figcaption>${escapeHtml(block.filename ?? block.alt ?? "")}</figcaption></figure>`
         : `<p>${escapeHtml(block.filename ?? block.alt ?? "image")}</p>`;
-    case "link":
-      return `<p><a href="${escapeHtml(block.url)}">${escapeHtml(block.text)}</a></p>`;
   }
 }
 

@@ -1,5 +1,10 @@
 import { RuntimeResponse } from "./types";
 
+export async function getActiveTabId(): Promise<number | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab?.id;
+}
+
 export async function sendToTabWithContentScript(tabId: number, message: object): Promise<RuntimeResponse> {
   try {
     return await chrome.tabs.sendMessage(tabId, message);
