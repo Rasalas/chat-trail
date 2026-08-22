@@ -9,7 +9,6 @@ export default defineConfig({
       input: {
         popup: "src/popup/index.html",
         review: "src/review/index.html",
-        content: "src/content/index.ts",
         background: "src/background/index.ts"
       },
       output: {
