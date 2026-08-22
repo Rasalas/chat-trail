@@ -37,7 +37,10 @@
           <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
           <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
           <label><input type="checkbox" data-option="useProviderCopy" /> Provider copy buttons</label>
-          <p class="option-note">May briefly access the clipboard. DOM extraction remains the default.</p>
+          <p id="clipboard-note" class="option-note clipboard-note" hidden>
+            Enabled: extraction will click each assistant copy button and briefly read your
+            clipboard, then restore its previous content. DOM extraction remains the default.
+          </p>
           <button id="select-all" type="button">Select All</button>
           <button id="select-none" type="button">Select None</button>
           <button id="redact-now" type="button">Redact Visible Text</button>
