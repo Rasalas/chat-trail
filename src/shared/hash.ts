@@ -12,11 +12,11 @@ export async function sha256Hex(input: string | Blob | ArrayBuffer | Uint8Array)
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function stableId(prefix: string, index: number, text: string): string {
+export function stableId(prefix: string, text: string): string {
   let hash = 2166136261;
   for (let i = 0; i < text.length; i += 1) {
     hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
-  return `${prefix}-${index + 1}-${(hash >>> 0).toString(36)}`;
+  return `${prefix}-${(hash >>> 0).toString(36)}`;
 }

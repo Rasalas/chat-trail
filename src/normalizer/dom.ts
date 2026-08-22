@@ -34,7 +34,7 @@ export async function elementToMessage(
   }
 
   return {
-    id: stableId(role, index, visibleText || element.outerHTML.slice(0, 512)),
+    id: stableId(role, visibleText || element.outerHTML.slice(0, 512)),
     role,
     content,
     metadata: {

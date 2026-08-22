@@ -233,7 +233,7 @@ async function conversationFromClipboard(text: string): Promise<ConversationExpo
     const role = inferClipboardRole(chunk.role, index);
     const body = chunk.text.trim();
     messages.push({
-      id: stableId(role, index, body),
+      id: stableId(role, body),
       role,
       content: [{ type: "text", text: body }],
       metadata: {
