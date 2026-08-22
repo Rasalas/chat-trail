@@ -40,6 +40,7 @@ const actionButtons = [
 
 let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
+const editedTexts = new Map<string, string>();
 
 refreshButton.addEventListener("click", () => void loadConversation(false));
 markdownButton.addEventListener("click", () => void exportCurrent("md"));
@@ -68,6 +69,7 @@ async function loadConversation(preferManualSelection: boolean): Promise<void> {
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();
+    editedTexts.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
     await chrome.storage.session.remove("manualSelection");
     render();
@@ -115,7 +117,7 @@ function render(): void {
       head.append(role, checkboxLabel);
 
       const textarea = document.createElement("textarea");
-      textarea.value = contentToPlainText(message.content);
+      textarea.value = editedTexts.get(message.id) ?? contentToPlainText(message.content);
       textarea.dataset.messageId = message.id;
       textarea.addEventListener("input", syncEditedMessage);
 
@@ -161,6 +163,7 @@ async function importClipboard(): Promise<void> {
     if (!text.trim()) throw new Error("Clipboard is empty.");
     conversation = await conversationFromClipboard(text);
     selectedIds.clear();
+    editedTexts.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
     render();
   });
@@ -169,11 +172,9 @@ async function importClipboard(): Promise<void> {
 function readEditedConversation(): ConversationExport {
   if (!conversation) throw new Error("No conversation loaded.");
   const edited = structuredClone(conversation);
-  const textareas = [...document.querySelectorAll<HTMLTextAreaElement>("textarea[data-message-id]")];
-  const edits = new Map(textareas.map((textarea) => [textarea.dataset.messageId!, textarea.value]));
 
   edited.messages = edited.messages.map((message): ChatMessage => {
-    const text = edits.get(message.id);
+    const text = editedTexts.get(message.id);
     if (text == null) return message;
     return { ...message, content: [{ type: "text", text }] };
   });
@@ -205,8 +206,12 @@ function selectMessages(mode: "all" | "none"): void {
 }
 
 function redactVisibleText(): void {
-  document.querySelectorAll<HTMLTextAreaElement>("textarea[data-message-id]").forEach((textarea) => {
-    textarea.value = redactText(textarea.value);
+  if (!conversation) return;
+  conversation = structuredClone(conversation);
+  conversation.messages = conversation.messages.map((message): ChatMessage => {
+    const current = editedTexts.get(message.id) ?? contentToPlainText(message.content);
+    editedTexts.set(message.id, redactText(current));
+    return { ...message, content: [{ type: "text", text: redactText(current) }] };
   });
   render();
 }
@@ -283,7 +288,9 @@ function inferClipboardRole(role: string | undefined, index: number): ChatMessag
 
 function syncEditedMessage(event: Event): void {
   const textarea = event.currentTarget as HTMLTextAreaElement;
-  if (textarea.dataset.messageId) selectedIds.add(textarea.dataset.messageId);
+  if (!textarea.dataset.messageId) return;
+  editedTexts.set(textarea.dataset.messageId, textarea.value);
+  selectedIds.add(textarea.dataset.messageId);
 }
 
 async function sendToActiveTab(message: object): Promise<RuntimeResponse> {
@@ -307,8 +314,12 @@ async function getHtmlSnapshot(): Promise<string | undefined> {
 async function captureScreenshot(): Promise<string | undefined> {
   try {
     const tabId = await getSourceTabId();
-    if (tabId) await chrome.tabs.update(tabId, { active: true });
-    return await chrome.tabs.captureVisibleTab(chrome.windows.WINDOW_ID_CURRENT, { format: "png" });
+    if (!tabId) return undefined;
+    const tab = await chrome.tabs.get(tabId);
+    await chrome.tabs.update(tabId, { active: true });
+    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    return await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
   } catch {
     return undefined;
   }
