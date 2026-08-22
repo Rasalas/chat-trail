@@ -26,6 +26,34 @@ describe("redactText", () => {
 
   it("redacts phone-like numbers", () => {
     expect(redactText("call +49 30 1234567 now")).toBe("call [redacted-phone] now");
+    expect(redactText("call 030 12345678 now")).toBe("call [redacted-phone] now");
+  });
+
+  it("redacts IBANs with and without grouping spaces", () => {
+    expect(redactText("pay to DE89 3704 0044 0532 0130 00 please")).toBe(
+      "pay to [redacted-iban] please"
+    );
+    expect(redactText("pay to DE89370400440532013000 please")).toBe(
+      "pay to [redacted-iban] please"
+    );
+  });
+
+  it("keeps short alphanumeric groups that only look like IBAN fragments", () => {
+    expect(redactText("order AB12 3456 CD was shipped")).toBe("order AB12 3456 CD was shipped");
+  });
+
+  it("redacts credit card numbers that pass the Luhn check", () => {
+    expect(redactText("card 4539148803436467 on file")).toBe("card [redacted-card] on file");
+    expect(redactText("card 4539 1488 0343 6467 on file")).toBe("card [redacted-card] on file");
+  });
+
+  it("keeps digit runs that fail the Luhn check for other rules to handle", () => {
+    const invalid = "1234 5678 9012 3456";
+    expect(redactText(`note ${invalid} end`)).not.toContain("[redacted-card]");
+  });
+
+  it("redacts AWS access key IDs", () => {
+    expect(redactText("key AKIAIOSFODNN7EXAMPLE is old")).toBe("key [redacted-aws-key] is old");
   });
 
   it("leaves normal text untouched", () => {
