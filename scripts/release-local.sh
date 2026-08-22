@@ -9,9 +9,9 @@ OUT_DIR="releases"
 ZIP_NAME="chat-trail-chrome-v${VERSION}.zip"
 ZIP_PATH="${OUT_DIR}/${ZIP_NAME}"
 
+rm -rf dist/chrome
 npm run build
-mkdir -p "$OUT_DIR"
-rm -f "$ZIP_PATH"
+mkdir -p "$OUT_DIR"rm -f "$ZIP_PATH"
 
 if command -v zip >/dev/null 2>&1; then
   (cd dist/chrome && zip -qr "../../${ZIP_PATH}" . -x '*.map' -x '*.DS_Store')
