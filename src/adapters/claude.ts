@@ -1,6 +1,6 @@
 import { ChatAdapter } from "../shared/types";
 import { enhanceMessageWithProviderCopy } from "../normalizer/copy-enhancement";
-import { createBaseConversation, elementToMessage, inferRole, uniqueElements } from "../normalizer/dom";
+import { createBaseConversation, elementToMessage, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
 
 export const claudeAdapter: ChatAdapter = {
   id: "claude",
@@ -60,10 +60,4 @@ function findVisibleModel(document: Document): string | undefined {
     .map((node) => node.textContent?.trim())
     .find((value) => value && /claude|sonnet|opus|haiku/i.test(value));
   return text?.replace(/\s+/g, " ");
-}
-
-function selectorFor(element: Element): string {
-  const testId = element.getAttribute("data-testid");
-  if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-  return element.tagName.toLowerCase();
 }

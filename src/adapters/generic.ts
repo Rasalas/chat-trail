@@ -1,5 +1,5 @@
 import { ChatAdapter } from "../shared/types";
-import { createBaseConversation, elementToMessage, inferRole, uniqueElements } from "../normalizer/dom";
+import { createBaseConversation, elementToMessage, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
 import { compactWhitespace } from "../shared/strings";
 
 export const genericAdapter: ChatAdapter = {
@@ -94,13 +94,4 @@ function removeNestedDuplicates(elements: Element[]): Element[] {
   return elements.filter((element, index) => {
     return !elements.some((other, otherIndex) => otherIndex !== index && other.contains(element));
   });
-}
-
-function selectorFor(element: Element): string {
-  const id = element.id ? `#${CSS.escape(element.id)}` : "";
-  if (id) return id;
-  const testId = element.getAttribute("data-testid");
-  if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-  const className = [...element.classList].slice(0, 2).map((name) => `.${CSS.escape(name)}`).join("");
-  return `${element.tagName.toLowerCase()}${className}`;
 }

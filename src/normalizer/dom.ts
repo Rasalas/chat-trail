@@ -55,7 +55,6 @@ export async function extractContentBlocks(root: Element): Promise<ContentBlock[
     if (block.type === "code") return block.text.length > 0;
     if (block.type === "table") return block.markdown.length > 0;
     if (block.type === "quote") return block.text.length > 0;
-    if (block.type === "link") return block.url.length > 0;
     return block.src || block.alt;
   }));
 }
@@ -65,7 +64,6 @@ export function contentToPlainText(blocks: ContentBlock[]): string {
     .map((block) => {
       if (block.type === "text" || block.type === "code" || block.type === "quote") return block.text;
       if (block.type === "table") return block.markdown;
-      if (block.type === "link") return `${block.text} ${block.url}`;
       return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
     })
     .join("\n\n")
@@ -122,6 +120,14 @@ export function uniqueElements(selectors: string[], root: ParentNode = document)
   });
 
   return elements;
+}
+
+export function selectorFor(element: Element): string {
+  const testId = element.getAttribute("data-testid");
+  if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  const className = [...element.classList].slice(0, 2).map((name) => `.${CSS.escape(name)}`).join("");
+  return `${element.tagName.toLowerCase()}${className}`;
 }
 
 function tableToMarkdown(table: HTMLTableElement): string {

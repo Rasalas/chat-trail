@@ -15,8 +15,7 @@ export type ContentBlock =
   | { type: "code"; language?: string; text: string }
   | { type: "table"; markdown: string }
   | { type: "quote"; text: string; url?: string }
-  | { type: "image"; alt?: string; src?: string; filename?: string; data_url?: string; mime_type?: string }
-  | { type: "link"; text: string; url: string };
+  | { type: "image"; alt?: string; src?: string; filename?: string; data_url?: string; mime_type?: string };
 
 export interface SourceMetadata {
   provider: ProviderId;

@@ -1,5 +1,5 @@
 import { ChatAdapter, ChatMessage } from "../shared/types";
-import { createBaseConversation, elementToMessage, uniqueElements } from "../normalizer/dom";
+import { createBaseConversation, elementToMessage, selectorFor, uniqueElements } from "../normalizer/dom";
 import { enhanceMessageWithProviderCopy } from "../normalizer/copy-enhancement";
 
 export const chatGptAdapter: ChatAdapter = {
@@ -61,12 +61,4 @@ function findVisibleModel(document: Document): string | undefined {
     if (text && /gpt|o\d|model/i.test(text)) return text.replace(/\s+/g, " ");
   }
   return undefined;
-}
-
-function selectorFor(element: Element): string {
-  const testId = element.getAttribute("data-testid");
-  if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-  const role = element.getAttribute("data-message-author-role");
-  if (role) return `[data-message-author-role="${CSS.escape(role)}"]`;
-  return element.tagName.toLowerCase();
 }
