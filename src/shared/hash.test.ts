@@ -16,15 +16,15 @@ describe("sha256Hex", () => {
 
 describe("stableId", () => {
   it("is deterministic for the same input", () => {
-    expect(stableId("user", 0, "hello")).toBe(stableId("user", 0, "hello"));
+    expect(stableId("user", "hello")).toBe(stableId("user", "hello"));
   });
 
-  it("embeds role and 1-based index", () => {
-    const id = stableId("assistant", 4, "body");
-    expect(id.startsWith("assistant-5-")).toBe(true);
+  it("does not depend on list position", () => {
+    expect(stableId("assistant", "body")).not.toMatch(/-\d+-/);
   });
 
-  it("differs for different text", () => {
-    expect(stableId("user", 0, "a")).not.toBe(stableId("user", 0, "b"));
+  it("differs by role or text", () => {
+    expect(stableId("user", "a")).not.toBe(stableId("assistant", "a"));
+    expect(stableId("user", "a")).not.toBe(stableId("user", "b"));
   });
 });
