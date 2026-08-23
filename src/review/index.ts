@@ -5,13 +5,14 @@ import { exportHtml } from "../exporters/html";
 import { exportJson } from "../exporters/json";
 import { exportMarkdown } from "../exporters/markdown";
 import { blobFromText, downloadBlob } from "../shared/download";
-import { contentToPlainText } from "../normalizer/dom";
 import { redactText } from "../shared/redaction";
+import { escapeHtml } from "../shared/strings";
 import { slugify } from "../shared/strings";
 import { sha256Hex, stableId } from "../shared/hash";
 import { readableTabError, getActiveTabId, sendToTabWithContentScript } from "../shared/tabs";
 import { withBusy } from "../shared/ui";
-import { ChatMessage, ConversationExport, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
+import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
+import { renderMarkdown } from "./markdown";
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const messagesRoot = document.querySelector<HTMLElement>("#messages")!;
@@ -42,7 +43,6 @@ const actionButtons = [
 
 let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
-const editedTexts = new Map<string, string>();
 
 refreshButton.addEventListener("click", () => void loadConversation(false));
 markdownButton.addEventListener("click", () => void exportCurrent("md"));
@@ -84,7 +84,6 @@ async function loadConversation(preferManualSelection: boolean): Promise<void> {
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();
-    editedTexts.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
     await chrome.storage.session.remove("manualSelection");
     render();
@@ -98,54 +97,94 @@ function render(): void {
   }
 
   const options = readOptions();
-  const preview = applyExportOptions(pickSelectedMessages(readEditedConversation()), options);
-  summary.textContent = `${preview.messages.length} of ${conversation.messages.length} messages selected from ${conversation.source.provider} | ${conversation.source.title}`;
+  const preview = applyExportOptions(pickSelectedMessages(), options);
+  summary.textContent = `${preview.messages.length} of ${conversation.messages.length} messages · ${conversation.source.provider} · ${conversation.source.title}`;
 
   if (conversation.messages.length === 0) {
     messagesRoot.innerHTML = `<div class="empty">No messages detected. Use the popup's container selection on pages with unusual layouts.</div>`;
     return;
   }
 
-  messagesRoot.replaceChildren(
-    ...conversation.messages.map((message) => {
-      const card = document.createElement("article");
-      card.className = `message-card ${message.role}`;
-      card.dataset.messageId = message.id;
+  messagesRoot.replaceChildren(...conversation.messages.map(messageNode));
+}
 
-      const head = document.createElement("div");
-      head.className = "message-head";
+function messageNode(message: ChatMessage): HTMLElement {
+  const included = selectedIds.has(message.id);
+  const row = document.createElement("div");
+  row.className = `message-row ${message.role} ${included ? "included" : "removed"}`;
 
-      const role = document.createElement("span");
-      role.className = "role";
-      role.textContent = `${message.role} ${message.metadata.index != null ? message.metadata.index + 1 : ""}`;
+  if (included) {
+    const body = document.createElement("div");
+    body.className = "message-body";
+    body.innerHTML = messageHtml(message);
 
-      const checkboxLabel = document.createElement("label");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = selectedIds.has(message.id);
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) selectedIds.add(message.id);
-        else selectedIds.delete(message.id);
-        render();
-      });
-      checkboxLabel.append(checkbox, " include");
-      head.append(role, checkboxLabel);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "message-remove";
+    remove.textContent = "✕";
+    remove.title = "Remove from export";
+    remove.setAttribute("aria-label", "Remove from export");
+    remove.addEventListener("click", () => {
+      selectedIds.delete(message.id);
+      render();
+    });
 
-      const textarea = document.createElement("textarea");
-      textarea.value = editedTexts.get(message.id) ?? contentToPlainText(message.content);
-      textarea.dataset.messageId = message.id;
-      textarea.addEventListener("input", syncEditedMessage);
+    row.append(body, remove);
+  } else {
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "message-restore";
+    restore.textContent = `${message.role} message removed — click to restore`;
+    restore.title = "Include again";
+    restore.addEventListener("click", () => {
+      selectedIds.add(message.id);
+      render();
+    });
+    row.append(restore);
+  }
 
-      card.append(head, textarea);
-      return card;
-    })
-  );
+  return row;
+}
+
+function messageHtml(message: ChatMessage): string {
+  if (message.role === "user") {
+    const text = message.content
+      .map((block) => (block.type === "text" ? block.text : blockToPlainText(block)))
+      .join("\n\n");
+    return `<div class="bubble-text">${escapeHtml(text)}</div>`;
+  }
+  return message.content.map(blockToHtml).join("\n");
+}
+
+function blockToHtml(block: ContentBlock): string {
+  switch (block.type) {
+    case "text":
+      return renderMarkdown(block.text);
+    case "code":
+      return `<pre><code>${escapeHtml(block.text)}</code></pre>`;
+    case "table":
+      return renderMarkdown(block.markdown);
+    case "quote":
+      return `<blockquote>${renderMarkdown(block.text)}</blockquote>`;
+    case "image":
+      return block.src
+        ? `<figure><img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}" loading="lazy">${block.alt || block.filename ? `<figcaption>${escapeHtml(block.filename ?? block.alt ?? "")}</figcaption>` : ""}</figure>`
+        : `<p>${escapeHtml(block.filename ?? block.alt ?? "image")}</p>`;
+  }
+}
+
+function blockToPlainText(block: ContentBlock): string {
+  if (block.type === "text") return block.text;
+  if (block.type === "code") return block.text;
+  if (block.type === "table") return block.markdown;
+  if (block.type === "quote") return block.text;
+  return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
 }
 
 async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): Promise<void> {
   if (!conversation) return;
   await withBusy(actionButtons, showSummary, `Preparing ${format.toUpperCase()}...`, async () => {
-    const prepared = applyExportOptions(pickSelectedMessages(readEditedConversation()), readOptions());
+    const prepared = applyExportOptions(pickSelectedMessages(), readOptions());
     const baseName = slugify(prepared.source.title);
 
     if (format === "md") {
@@ -178,29 +217,16 @@ async function importClipboard(): Promise<void> {
     if (!text.trim()) throw new Error("Clipboard is empty.");
     conversation = await conversationFromClipboard(text);
     selectedIds.clear();
-    editedTexts.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
     render();
   });
 }
 
-function readEditedConversation(): ConversationExport {
+function pickSelectedMessages(): ConversationExport {
   if (!conversation) throw new Error("No conversation loaded.");
-  const edited = structuredClone(conversation);
-
-  edited.messages = edited.messages.map((message): ChatMessage => {
-    const text = editedTexts.get(message.id);
-    if (text == null) return message;
-    return { ...message, content: [{ type: "text", text }] };
-  });
-
-  return edited;
-}
-
-function pickSelectedMessages(input: ConversationExport): ConversationExport {
   return {
-    ...input,
-    messages: input.messages.filter((message) => selectedIds.has(message.id))
+    ...conversation,
+    messages: conversation.messages.filter((message) => selectedIds.has(message.id))
   };
 }
 
@@ -224,8 +250,7 @@ function redactVisibleText(): void {
   if (!conversation) return;
   conversation = structuredClone(conversation);
   conversation.messages = conversation.messages.map((message): ChatMessage => {
-    const current = editedTexts.get(message.id) ?? contentToPlainText(message.content);
-    editedTexts.set(message.id, redactText(current));
+    const current = message.content.map(blockToPlainText).join("\n\n");
     return { ...message, content: [{ type: "text", text: redactText(current) }] };
   });
   render();
@@ -299,13 +324,6 @@ function inferClipboardRole(role: string | undefined, index: number): ChatMessag
   if (/user|you|human/.test(value)) return "user";
   if (/assistant|chatgpt|claude|ai/.test(value)) return "assistant";
   return index % 2 === 0 ? "user" : "assistant";
-}
-
-function syncEditedMessage(event: Event): void {
-  const textarea = event.currentTarget as HTMLTextAreaElement;
-  if (!textarea.dataset.messageId) return;
-  editedTexts.set(textarea.dataset.messageId, textarea.value);
-  selectedIds.add(textarea.dataset.messageId);
 }
 
 async function sendToActiveTab(message: object): Promise<RuntimeResponse> {

@@ -8,9 +8,9 @@
   <body>
     <main class="review-shell">
       <header class="topbar">
-        <div>
-          <p class="kicker">Evidence workspace</p>
-          <h1>Review Export</h1>
+        <div class="topbar-title">
+          <h1>Review</h1>
+          <p id="summary" class="summary">Waiting for the active tab.</p>
         </div>
         <div class="export-actions">
           <button id="refresh" type="button">Refresh</button>
@@ -22,11 +22,8 @@
         </div>
       </header>
 
-      <section class="summary" id="summary">Waiting for the active tab.</section>
-
       <section class="workspace">
         <aside class="options" aria-label="Export options">
-          <h2>Options</h2>
           <label><input type="checkbox" data-option="includeUser" checked /> User messages</label>
           <label><input type="checkbox" data-option="includeAssistant" checked /> Assistant messages</label>
           <label title="Extra assistant segments within one answer are kept collapsed as “previous messages”. Uncheck to remove them entirely.">
@@ -44,10 +41,12 @@
             Enabled: extraction will click each assistant copy button and briefly read your
             clipboard, then restore its previous content. DOM extraction remains the default.
           </p>
-          <button id="select-all" type="button">Select All</button>
-          <button id="select-none" type="button">Select None</button>
-          <button id="redact-now" type="button">Redact Visible Text</button>
-          <button id="clipboard-import" type="button">Clipboard Import</button>
+          <div class="option-buttons">
+            <button id="select-all" type="button">Show all</button>
+            <button id="select-none" type="button">Remove all</button>
+            <button id="redact-now" type="button">Redact</button>
+            <button id="clipboard-import" type="button">Clipboard</button>
+          </div>
         </aside>
 
         <section class="messages" id="messages" aria-live="polite"></section>
