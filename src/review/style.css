@@ -257,6 +257,38 @@ details.popover[open] > summary.primary {
   font-size: 13.5px;
 }
 
+.export-row-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 4px;
+}
+
+.export-main {
+  min-width: 0;
+}
+
+.export-copy {
+  min-height: 32px;
+  width: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.export-copy:hover {
+  background: var(--hover-veil);
+  color: var(--fg);
+}
+
+.export-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
 .export-row:hover {
   background: var(--hover-veil);
 }

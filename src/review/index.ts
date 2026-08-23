@@ -25,12 +25,14 @@ const clipboardButton = document.querySelector<HTMLButtonElement>("#clipboard-im
 const clipboardNote = document.querySelector<HTMLElement>("#clipboard-note")!;
 const optionInputs = [...document.querySelectorAll<HTMLInputElement>("[data-option]")];
 const exportButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-export]")];
+const copyButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-copy]")];
 const actionButtons = [
   refreshButton,
   clipboardButton,
   redactButton,
   selectAllButton,
   selectNoneButton,
+  ...copyButtons,
   ...exportButtons
 ];
 
@@ -44,6 +46,12 @@ exportButtons.forEach((button) =>
   button.addEventListener("click", () => {
     closePopovers();
     void exportCurrent(button.dataset.export as "md" | "json" | "html" | "print" | "zip");
+  })
+);
+copyButtons.forEach((button) =>
+  button.addEventListener("click", () => {
+    closePopovers();
+    void copyExport(button.dataset.copy as "md" | "json" | "html");
   })
 );
 selectAllButton.addEventListener("click", () => selectMessages("all"));
@@ -340,6 +348,16 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
     }
 
     summary.textContent = `Exported ${prepared.messages.length} messages.`;
+  });
+}
+
+async function copyExport(format: "md" | "json" | "html"): Promise<void> {
+  if (!conversation) return;
+  await withBusy(actionButtons, showSummary, `Copying ${format.toUpperCase()}...`, async () => {
+    const prepared = applyExportOptions(pickSelectedMessages(), readOptions());
+    const content = format === "md" ? exportMarkdown(prepared) : format === "json" ? exportJson(prepared) : exportHtml(prepared);
+    await navigator.clipboard.writeText(content);
+    summary.textContent = `${format.toUpperCase()} copied to clipboard.`;
   });
 }
 
