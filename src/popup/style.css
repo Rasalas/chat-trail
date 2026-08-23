@@ -1,7 +1,28 @@
 :root {
-  color: #171717;
-  background: #f3efe4;
-  font-family: "Avenir Next Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
+  color-scheme: light dark;
+  --bg: #f7f6f3;
+  --fg: #1a1a1a;
+  --muted: #6d6a63;
+  --border: #e2dfd8;
+  --surface: #ffffff;
+  --accent: #0d6b57;
+  --accent-fg: #ffffff;
+  --hover: rgba(0, 0, 0, 0.045);
+  --privacy-bg: #eeece6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181a;
+    --fg: #e8e6e1;
+    --muted: #9a968d;
+    --border: #2b2e31;
+    --surface: #1e2124;
+    --accent: #35a08a;
+    --accent-fg: #0c1f1a;
+    --hover: rgba(255, 255, 255, 0.06);
+    --privacy-bg: #202326;
+  }
 }
 
 * {
@@ -9,106 +30,142 @@
 }
 
 body {
-  width: 320px;
+  width: 340px;
+  min-width: 320px;
   margin: 0;
-  background:
-    linear-gradient(90deg, rgba(23, 23, 23, 0.05) 1px, transparent 1px) 0 0 / 18px 18px,
-    #f3efe4;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
 button {
   width: 100%;
   min-height: 42px;
-  border: 1px solid #171717;
-  border-radius: 6px;
-  background: #fffefa;
-  color: #171717;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--fg);
   cursor: pointer;
-  font: 700 13px/1 "Avenir Next Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
-  letter-spacing: 0;
+  font: 600 13px/1 -apple-system, "Segoe UI", system-ui, sans-serif;
   text-align: left;
-  padding: 0 12px;
-  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 
 button:hover {
+  border-color: var(--muted);
+  background: var(--hover);
   transform: translateY(-1px);
-  box-shadow: 3px 3px 0 #171717;
 }
 
 button:disabled {
   cursor: wait;
-  opacity: 0.6;
+  opacity: 0.55;
   transform: none;
-  box-shadow: none;
+}
+
+button svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(1.08);
+}
+
+button.primary svg {
+  color: currentColor;
 }
 
 .popup-shell {
-  padding: 16px;
+  padding: 17px;
 }
 
 .brand {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 2px solid #171717;
-  padding-bottom: 14px;
+  gap: 12px;
 }
 
-.kicker {
-  margin: 0 0 3px;
-  color: #6a261d;
-  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  text-transform: uppercase;
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
-h1 {
-  margin: 0;
-  font-size: 31px;
-  line-height: 0.9;
+.brand-link:hover {
+  color: var(--accent);
+}
+
+.brand-mark {
+  width: 23px;
+  height: 23px;
+  border-radius: 6px;
 }
 
 .status-dot {
-  width: 12px;
-  height: 12px;
-  border: 1px solid #171717;
-  background: #d6b92e;
-  margin-top: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 15%, transparent);
 }
 
 .status-dot.ready {
-  background: #0d6b57;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .status-dot.error {
-  background: #9d3f2f;
+  background: #bd5749;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #bd5749 18%, transparent);
 }
 
 .status {
-  min-height: 38px;
-  margin: 12px 0;
-  color: #3f3b33;
-  font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-height: 39px;
+  margin: 15px 0 13px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .actions {
   display: grid;
-  gap: 8px;
-}
-
-.primary {
-  background: #0d6b57;
-  color: #fffefa;
+  gap: 7px;
 }
 
 .privacy {
   display: grid;
-  gap: 4px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #c9c3b3;
-  color: #49443a;
+  gap: 3px;
+  margin-top: 16px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  background: var(--privacy-bg);
+  color: var(--muted);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.4;
+}
+
+.privacy strong {
+  color: var(--fg);
+  font-size: 12px;
 }
