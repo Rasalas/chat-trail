@@ -1,6 +1,7 @@
-import { ChatAdapter } from "../shared/types";
-import { createBaseConversation, elementToMessage, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
+import { ChatAdapter, ChatMessage } from "../shared/types";
+import { createBaseConversation, elementToMessage, extractContentBlocks, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
 import { compactWhitespace } from "../shared/strings";
+import { stableId } from "../shared/hash";
 
 export const genericAdapter: ChatAdapter = {
   id: "generic",
@@ -34,6 +35,30 @@ export const genericAdapter: ChatAdapter = {
 export async function extractFromContainer(container: Element, document: Document) {
   const conversation = createBaseConversation("generic", document);
   const messageElements = findLikelyMessages(container);
+
+  if (!looksLikeChatContainer(container, messageElements)) {
+    const content = await extractContentBlocks(container);
+    const visibleText = compactWhitespace(
+      content
+        .map((block) => {
+          if (block.type === "text" || block.type === "code" || block.type === "quote") return block.text;
+          if (block.type === "table") return block.markdown;
+          return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
+        })
+        .join("\n")
+    );
+    if (content.length > 0) {
+      const message: ChatMessage = {
+        id: stableId("document", visibleText || container.outerHTML.slice(0, 512)),
+        role: "assistant",
+        content,
+        metadata: { index: 0, selector: selectorFor(container) }
+      };
+      conversation.messages = [message];
+    }
+    return conversation;
+  }
+
   const messages = [];
 
   for (const [index, element] of messageElements.entries()) {
@@ -43,6 +68,15 @@ export async function extractFromContainer(container: Element, document: Documen
 
   conversation.messages = messages;
   return conversation;
+}
+
+function looksLikeChatContainer(container: Element, messageElements: Element[]): boolean {
+  if (messageElements.length < 2) return false;
+  return Boolean(
+    container.querySelector(
+      "[data-message-author-role], [data-role], [data-author-role], [class*='user-message' i], [class*='assistant-message' i]"
+    )
+  );
 }
 
 function findLikelyChatRoot(document: Document): Element {
