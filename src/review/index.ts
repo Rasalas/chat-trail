@@ -180,7 +180,7 @@ function editorNode(message: ChatMessage): HTMLElement {
   wrap.className = "message-editor";
 
   const textarea = document.createElement("textarea");
-  textarea.value = message.content.map(blockToPlainText).join("\n\n");
+  textarea.value = message.content.map(blockToMarkdown).join("\n\n");
   textarea.spellcheck = false;
   const autoGrow = () => {
     textarea.style.height = "auto";
@@ -272,6 +272,27 @@ function blockToPlainText(block: ContentBlock): string {
   if (block.type === "table") return block.markdown;
   if (block.type === "quote") return block.text;
   return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
+}
+
+function blockToMarkdown(block: ContentBlock): string {
+  switch (block.type) {
+    case "text":
+      return block.text;
+    case "code":
+      return `\`\`\`${block.language ?? ""}\n${block.text}\n\`\`\``;
+    case "table":
+      return block.markdown;
+    case "quote":
+      return block.text
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+    case "image": {
+      if (!block.src) return block.alt ?? block.filename ?? "";
+      const alt = block.alt && !/^https?:/i.test(block.alt) ? block.alt.replace(/[[\]]/g, "") : "";
+      return `![${alt}](${block.src})`;
+    }
+  }
 }
 
 async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): Promise<void> {
