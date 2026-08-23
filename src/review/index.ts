@@ -17,6 +17,7 @@ import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const chatTitle = document.querySelector<HTMLElement>("#chat-title")!;
 const messagesRoot = document.querySelector<HTMLElement>("#messages")!;
+const toast = document.querySelector<HTMLElement>("#toast")!;
 const refreshButton = document.querySelector<HTMLButtonElement>("#refresh")!;
 const selectAllButton = document.querySelector<HTMLButtonElement>("#select-all")!;
 const selectNoneButton = document.querySelector<HTMLButtonElement>("#select-none")!;
@@ -40,6 +41,7 @@ let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
 let editingId: string | null = null;
 const OPTIONS_STORAGE_KEY = "exportOptions";
+let toastTimer: number | undefined;
 
 refreshButton.addEventListener("click", () => void loadConversation(false));
 exportButtons.forEach((button) =>
@@ -347,7 +349,8 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
       downloadBlob(zip, `${baseName}-evidence.zip`);
     }
 
-    summary.textContent = `Exported ${prepared.messages.length} messages.`;
+    restoreMeta();
+    showToast(`${format.toUpperCase()} exported.`);
   });
 }
 
@@ -357,8 +360,24 @@ async function copyExport(format: "md" | "json" | "html"): Promise<void> {
     const prepared = applyExportOptions(pickSelectedMessages(), readOptions());
     const content = format === "md" ? exportMarkdown(prepared) : format === "json" ? exportJson(prepared) : exportHtml(prepared);
     await navigator.clipboard.writeText(content);
-    summary.textContent = `${format.toUpperCase()} copied to clipboard.`;
+    restoreMeta();
+    showToast(`${format.toUpperCase()} copied to clipboard.`);
   });
+}
+
+function restoreMeta(): void {
+  if (!conversation) return;
+  const preview = applyExportOptions(pickSelectedMessages(), readOptions());
+  summary.textContent = metaLine(conversation, preview.messages.length);
+}
+
+function showToast(message: string): void {
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.hidden = false;
+  toastTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 2600);
 }
 
 async function importClipboard(): Promise<void> {

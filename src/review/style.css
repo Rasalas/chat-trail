@@ -469,6 +469,25 @@ details.popover[open] > summary.primary {
   text-align: center;
 }
 
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+}
+
+.toast[hidden] {
+  display: none;
+}
+
 /* Rendered markdown inside assistant messages */
 .message-body :is(h1, h2, h3, h4, h5, h6) {
   margin: 14px 0 6px;
