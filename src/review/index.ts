@@ -43,6 +43,7 @@ const actionButtons = [
 
 let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
+let editingId: string | null = null;
 
 refreshButton.addEventListener("click", () => void loadConversation(false));
 markdownButton.addEventListener("click", () => void exportCurrent("md"));
@@ -113,24 +114,7 @@ function messageNode(message: ChatMessage): HTMLElement {
   const row = document.createElement("div");
   row.className = `message-row ${message.role} ${included ? "included" : "removed"}`;
 
-  if (included) {
-    const body = document.createElement("div");
-    body.className = "message-body";
-    body.innerHTML = messageHtml(message);
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "message-remove";
-    remove.textContent = "✕";
-    remove.title = "Remove from export";
-    remove.setAttribute("aria-label", "Remove from export");
-    remove.addEventListener("click", () => {
-      selectedIds.delete(message.id);
-      render();
-    });
-
-    row.append(body, remove);
-  } else {
+  if (!included) {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "message-restore";
@@ -141,9 +125,115 @@ function messageNode(message: ChatMessage): HTMLElement {
       render();
     });
     row.append(restore);
+    return row;
   }
 
+  if (editingId === message.id) {
+    row.append(editorNode(message));
+    return row;
+  }
+
+  const body = document.createElement("div");
+  body.className = "message-body";
+  body.innerHTML = messageHtml(message);
+  body.querySelectorAll("img").forEach((img) => {
+    img.addEventListener("error", () => {
+      const fallback = document.createElement("span");
+      fallback.className = "img-fallback";
+      fallback.textContent = img.getAttribute("data-fallback") || img.alt || "image could not be loaded";
+      img.replaceWith(fallback);
+    });
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "message-actions";
+
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "message-edit";
+  edit.textContent = "✎";
+  edit.title = "Edit (markdown)";
+  edit.setAttribute("aria-label", "Edit message");
+  edit.addEventListener("click", () => {
+    editingId = message.id;
+    render();
+  });
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "message-remove";
+  remove.textContent = "✕";
+  remove.title = "Remove from export";
+  remove.setAttribute("aria-label", "Remove from export");
+  remove.addEventListener("click", () => {
+    selectedIds.delete(message.id);
+    render();
+  });
+
+  actions.append(edit, remove);
+  row.append(body, actions);
   return row;
+}
+
+function editorNode(message: ChatMessage): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "message-editor";
+
+  const textarea = document.createElement("textarea");
+  textarea.value = message.content.map(blockToPlainText).join("\n\n");
+  textarea.spellcheck = false;
+  const autoGrow = () => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 640)}px`;
+  };
+  textarea.addEventListener("input", autoGrow);
+  textarea.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      saveEdit(message, textarea.value);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      editingId = null;
+      render();
+    }
+  });
+
+  const bar = document.createElement("div");
+  bar.className = "editor-buttons";
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "primary";
+  save.textContent = "Save";
+  save.addEventListener("click", () => saveEdit(message, textarea.value));
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => {
+    editingId = null;
+    render();
+  });
+
+  const hint = document.createElement("span");
+  hint.className = "editor-hint";
+  hint.textContent = "markdown · ⌘↩ save · esc cancel";
+
+  bar.append(save, cancel, hint);
+  wrap.append(textarea, bar);
+  requestAnimationFrame(() => {
+    autoGrow();
+    textarea.focus();
+  });
+  return wrap;
+}
+
+function saveEdit(message: ChatMessage, value: string): void {
+  const target = conversation?.messages.find((candidate) => candidate.id === message.id);
+  if (target) target.content = [{ type: "text", text: value }];
+  editingId = null;
+  render();
 }
 
 function messageHtml(message: ChatMessage): string {
@@ -166,10 +256,13 @@ function blockToHtml(block: ContentBlock): string {
       return renderMarkdown(block.markdown);
     case "quote":
       return `<blockquote>${renderMarkdown(block.text)}</blockquote>`;
-    case "image":
-      return block.src
-        ? `<figure><img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}" loading="lazy">${block.alt || block.filename ? `<figcaption>${escapeHtml(block.filename ?? block.alt ?? "")}</figcaption>` : ""}</figure>`
-        : `<p>${escapeHtml(block.filename ?? block.alt ?? "image")}</p>`;
+    case "image": {
+      const label = block.filename ?? block.alt ?? "";
+      const caption = label && !/^[a-z0-9_-]{32,}$/i.test(label) ? label : "";
+      if (!block.src) return `<p>${escapeHtml(label || "image")}</p>`;
+      const img = `<img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}" loading="lazy" referrerpolicy="no-referrer" data-fallback="${escapeHtml(block.filename ?? "")}">`;
+      return `<figure>${img}${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}</figure>`;
+    }
   }
 }
 

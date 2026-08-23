@@ -174,7 +174,8 @@ function inline(text: string): string {
   out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
   out = out.replace(
     /!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g,
-    (_match, alt: string, url: string) => (safeUrl(url) ? `<img src="${url}" alt="${alt}" loading="lazy">` : alt)
+    (_match, alt: string, url: string) =>
+      safeUrl(url) ? `<img src="${url}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer">` : alt
   );
   out = out.replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (_match, label: string, url: string) =>
     safeUrl(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : label

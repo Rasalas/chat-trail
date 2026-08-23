@@ -216,42 +216,45 @@ h1 {
   padding: 6px 10px;
 }
 
-.message-remove {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  min-height: 0;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--hover-veil);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1;
+.message-actions {
+  position: sticky;
+  top: 8px;
+  align-self: flex-start;
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+  height: fit-content;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.message-row.user .message-remove {
-  right: auto;
-  left: -30px;
-  top: 10px;
-}
-
-.message-row:hover .message-remove,
-.message-remove:focus-visible {
+.message-row:hover .message-actions,
+.message-actions:focus-within {
   opacity: 1;
 }
 
-.message-remove:hover {
-  background: var(--danger);
-  color: #fff;
+.message-actions button {
+  min-height: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
 }
 
-.message-row.user .message-body {
-  position: relative;
+.message-actions button:hover {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.message-actions .message-remove:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 .message-restore {
@@ -270,6 +273,52 @@ h1 {
 .message-restore:hover {
   opacity: 1;
   background: var(--hover-veil);
+}
+
+.message-editor {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+}
+
+.message-editor textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+.editor-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-buttons button {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.editor-hint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.img-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
 .empty {
