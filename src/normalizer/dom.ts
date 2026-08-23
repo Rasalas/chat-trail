@@ -48,7 +48,7 @@ export async function elementToMessage(
 
 export async function extractContentBlocks(root: Element): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [];
-  await collectBlocksInOrder(root, blocks);
+  await collectBlocksInOrder(root, blocks, new Set());
 
   return mergeAdjacentText(blocks.filter((block) => {
     if (block.type === "text") return block.text.length > 0;
@@ -122,6 +122,12 @@ export function uniqueElements(selectors: string[], root: ParentNode = document)
   return elements;
 }
 
+export function dropContained(elements: Element[]): Element[] {
+  return elements.filter(
+    (element) => !elements.some((other) => other !== element && element.contains(other))
+  );
+}
+
 export function selectorFor(element: Element): string {
   const testId = element.getAttribute("data-testid");
   if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
@@ -145,7 +151,7 @@ function tableToMarkdown(table: HTMLTableElement): string {
     .join("\n");
 }
 
-async function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): Promise<void> {
+async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
   for (const child of root.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       const text = compactWhitespace(child.textContent ?? "");
@@ -154,7 +160,34 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): Prom
     }
 
     if (!(child instanceof Element)) continue;
-    if (child.matches("script, style, noscript, button, svg, [aria-hidden='true']")) continue;
+    if (child.matches(WALKER_IGNORED_SELECTOR)) continue;
+
+    if (child.matches('[class*="search-image"]')) {
+      await harvestImages(child, blocks, seenImages);
+      continue;
+    }
+
+    if (child.matches("button")) {
+      await harvestImages(child, blocks, seenImages);
+      continue;
+    }
+
+    if (child.matches("hr")) {
+      blocks.push({ type: "text", text: "---" });
+      continue;
+    }
+
+    if (child.matches("details")) {
+      const details = await detailsToText(child, seenImages);
+      if (details) blocks.push({ type: "text", text: details });
+      continue;
+    }
+
+    if (child.matches("ul, ol")) {
+      const list = listToText(child);
+      if (list) blocks.push({ type: "text", text: list });
+      continue;
+    }
 
     if (child.matches("pre")) {
       const code = child.querySelector("code");
@@ -179,20 +212,7 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): Prom
     }
 
     if (child.matches("img")) {
-      const img = child as HTMLImageElement;
-      const src = img.currentSrc || img.src;
-      const alt = img.alt || img.title;
-      const data_url = await imageToDataUrl(img);
-      if (src || alt || data_url) {
-        blocks.push({
-          type: "image",
-          src,
-          alt,
-          filename: filenameFromUrl(src),
-          data_url,
-          mime_type: data_url ? mimeTypeFromDataUrl(data_url) : undefined
-        });
-      }
+      await pushImage(child as HTMLImageElement, blocks, seenImages);
       continue;
     }
 
@@ -202,7 +222,79 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[]): Prom
       continue;
     }
 
-    await collectBlocksInOrder(child, blocks);
+    await collectBlocksInOrder(child, blocks, seenImages);
+  }
+}
+
+const WALKER_IGNORED_SELECTOR =
+  "script, style, noscript, svg, [aria-hidden='true'], .sr-only, [class*='visually-hidden'], [role='menuitem'], [role='menu'], nav, aside, footer";
+
+const INLINE_IGNORED_SELECTOR = `${WALKER_IGNORED_SELECTOR}, button`;
+
+async function harvestImages(scope: Element, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
+  for (const img of [...scope.querySelectorAll("img")]) {
+    if (!seenImages.has(img)) await pushImage(img, blocks, seenImages);
+  }
+}
+
+async function detailsToText(element: Element, seenImages: Set<Element>): Promise<string> {
+  const summary = element.querySelector(":scope > summary");
+  const summaryText = compactWhitespace(summary ? childrenInlineMarkdown(summary) : "").trim();
+
+  const body = document.createElement("div");
+  for (const node of [...element.childNodes]) {
+    if (node instanceof Element && node.matches("summary")) continue;
+    body.append(node.cloneNode(true));
+  }
+
+  const bodyBlocks: ContentBlock[] = [];
+  await collectBlocksInOrder(body, bodyBlocks, seenImages);
+  const bodyText = bodyBlocks.map(renderBlockToMarkdown).filter(Boolean).join("\n\n");
+
+  if (!summaryText && !bodyText) return "";
+  return ["<details>", `<summary>${summaryText}</summary>`, "", bodyText, "</details>"].join("\n");
+}
+
+function renderBlockToMarkdown(block: ContentBlock): string {
+  switch (block.type) {
+    case "text":
+      return block.text;
+    case "code":
+      return `\`\`\`${block.language ?? ""}\n${block.text}\n\`\`\``;
+    case "table":
+      return block.markdown;
+    case "quote":
+      return quoteLines(block.text);
+    case "image":
+      return `![${block.alt ?? block.filename ?? "image"}](${block.src ?? block.filename ?? ""})`;
+  }
+}
+
+function quoteLines(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line.trim() === "" ? ">" : `> ${line}`))
+    .join("\n");
+}
+
+async function pushImage(image: HTMLImageElement, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
+  if (seenImages.has(image)) return;
+  seenImages.add(image);
+
+  const src = image.currentSrc || image.src;
+  if (src && /favicon|sprite|\/icons?\/|^data:image\/svg/i.test(src)) return;
+
+  const alt = image.alt || image.title;
+  const data_url = await imageToDataUrl(image);
+  if (src || alt || data_url) {
+    blocks.push({
+      type: "image",
+      src,
+      alt,
+      filename: filenameFromUrl(src),
+      data_url,
+      mime_type: data_url ? mimeTypeFromDataUrl(data_url) : undefined
+    });
   }
 }
 
@@ -212,17 +304,44 @@ function formatProseBlock(element: Element): string {
 
   if (/^H[1-6]$/.test(element.tagName)) {
     const depth = Number(element.tagName.slice(1));
-    return `${"#".repeat(Math.min(depth + 2, 6))} ${text}`;
+    return `${"#".repeat(Math.min(depth + 1, 6))} ${text}`;
   }
 
   if (element.tagName === "LI") return `- ${text}`;
   return text;
 }
 
+function listToText(list: Element, depth = 0): string {
+  const ordered = list.tagName === "OL";
+  let index = Number(list.getAttribute("start") ?? "1") || 1;
+  const lines: string[] = [];
+
+  for (const item of [...list.children].filter((child) => child.matches("li"))) {
+    const text = listItemText(item);
+    if (text) lines.push(`${"  ".repeat(depth)}${ordered ? `${index}.` : "-"} ${text}`);
+    index += 1;
+    for (const nested of item.querySelectorAll(":scope > ul, :scope > ol")) {
+      const nestedText = listToText(nested, depth + 1);
+      if (nestedText) lines.push(nestedText);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function listItemText(item: Element): string {
+  return compactWhitespace(
+    [...item.childNodes]
+      .filter((node) => !(node instanceof Element) || !node.matches("ul, ol"))
+      .map((node) => inlineMarkdown(node))
+      .join("")
+  ).trim();
+}
+
 function inlineMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
   if (!(node instanceof Element)) return "";
-  if (node.matches("script, style, noscript, button, svg, [aria-hidden='true']")) return "";
+  if (node.matches(INLINE_IGNORED_SELECTOR)) return "";
 
   if (node.matches("br")) return "\n";
   if (node.matches("code") && !node.closest("pre")) return `\`${compactWhitespace(node.textContent ?? "")}\``;
@@ -230,9 +349,16 @@ function inlineMarkdown(node: Node): string {
   if (node.matches("em, i")) return `_${compactWhitespace(childrenInlineMarkdown(node))}_`;
   if (node.matches("a[href]")) {
     const anchor = node as HTMLAnchorElement;
-    const text = compactWhitespace(childrenInlineMarkdown(anchor) || anchor.href);
-    if (!anchor.href || anchor.href.startsWith("javascript:")) return text;
-    return `[${text}](${anchor.href})`;
+    const href = anchor.href;
+    let text = compactWhitespace(childrenInlineMarkdown(anchor)) || href;
+
+    if (anchor.closest("[data-testid='webpage-citation-pill']")) {
+      text = citationPillLabel(anchor) || hostname(href);
+      return href && !href.startsWith("javascript:") ? `[${text}](${href})` : text;
+    }
+
+    if (!href || href.startsWith("javascript:")) return text;
+    return `[${text}](${href})`;
   }
   if (node.matches("img")) {
     const image = node as HTMLImageElement;
@@ -251,6 +377,22 @@ function childrenInlineMarkdown(element: Element): string {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/[ \t]{2,}/g, " ");
+}
+
+function citationPillLabel(anchor: HTMLAnchorElement): string {
+  const leafLabels = [...anchor.querySelectorAll("span")]
+    .filter((span) => !span.querySelector("span"))
+    .map((span) => compactWhitespace(span.textContent ?? "").replace(/\+\d+$/, "").trim())
+    .filter((label) => label.length > 0 && !/^[+\d]+$/.test(label));
+  return leafLabels[0] ?? "";
+}
+
+function hostname(href: string): string {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return href;
+  }
 }
 
 function isProseBlock(element: Element): boolean {

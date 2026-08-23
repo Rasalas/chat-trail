@@ -1,6 +1,7 @@
 import { ChatMessage, ContentBlock, ConversationExport, ExportOptions } from "../shared/types";
 import { normalizeUrlForPrivacy } from "../shared/strings";
 import { redactText } from "../shared/redaction";
+import { intermediateAssistantFlags } from "./turns";
 
 export function applyExportOptions(conversation: ConversationExport, options: ExportOptions): ConversationExport {
   const filtered: ConversationExport = structuredClone(conversation);
@@ -17,6 +18,11 @@ export function applyExportOptions(conversation: ConversationExport, options: Ex
   if (!options.includeMetadata) {
     filtered.messages = filtered.messages.map((message) => ({ ...message, metadata: {} }));
     filtered.source.model = undefined;
+  }
+
+  if (!options.collapseIntermediate) {
+    const interim = intermediateAssistantFlags(filtered.messages);
+    filtered.messages = filtered.messages.filter((_, index) => !interim[index]);
   }
 
   return filtered;

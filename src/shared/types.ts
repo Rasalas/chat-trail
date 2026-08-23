@@ -36,6 +36,7 @@ export interface ChatMessage {
     index?: number;
     visibleTextHash?: string;
     extractionMethod?: "dom" | "provider-copy";
+    kind?: "activity";
   };
 }
 
@@ -88,6 +89,7 @@ export interface ExportOptions {
   includeCitations: boolean;
   includeImages: boolean;
   includeMetadata: boolean;
+  collapseIntermediate: boolean;
   anonymizeUrl: boolean;
   redactSecrets: boolean;
   useProviderCopy: boolean;
@@ -113,9 +115,10 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeCode: true,
   includeTables: true,
   includeCitations: true,
-  includeImages: true,
-  includeMetadata: true,
-  anonymizeUrl: false,
+    includeImages: true,
+    includeMetadata: true,
+    collapseIntermediate: true,
+    anonymizeUrl: false,
   redactSecrets: true,
   useProviderCopy: false
 };

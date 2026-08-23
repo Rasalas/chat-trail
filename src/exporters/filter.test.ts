@@ -49,4 +49,31 @@ describe("applyExportOptions", () => {
     expect(filtered.messages[0].metadata).toEqual({});
     expect(filtered.source.model).toBeUndefined();
   });
+
+  it("drops interim assistant messages when collapseIntermediate is off", () => {
+    const conversation = makeConversation([
+      makeMessage("user", 0, [{ type: "text", text: "q" }]),
+      makeMessage("assistant", 1, [{ type: "text", text: "interim" }]),
+      makeMessage("assistant", 2, [{ type: "text", text: "final" }]),
+      makeMessage("user", 3, [{ type: "text", text: "next" }]),
+      makeMessage("assistant", 4, [{ type: "text", text: "answer two" }])
+    ]);
+    const filtered = applyExportOptions(conversation, optionsWith({ collapseIntermediate: false }));
+    expect(texts(filtered)).toEqual(["q", "final", "next", "answer two"]);
+  });
+
+  it("keeps interim assistant messages when collapseIntermediate is on", () => {
+    const conversation = makeConversation([
+      makeMessage("assistant", 0, [{ type: "text", text: "interim" }]),
+      makeMessage("assistant", 1, [{ type: "text", text: "final" }])
+    ]);
+    const filtered = applyExportOptions(conversation, optionsWith({ collapseIntermediate: true }));
+    expect(texts(filtered)).toEqual(["interim", "final"]);
+  });
 });
+
+function texts(conversation: ReturnType<typeof applyExportOptions>): string[] {
+  return conversation.messages.map((message) =>
+    message.content.map((block) => (block.type === "text" ? block.text : "")).join("")
+  );
+}
