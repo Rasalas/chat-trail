@@ -10,15 +10,17 @@ import { slugify } from "../shared/strings";
 const status = document.querySelector<HTMLParagraphElement>("#status")!;
 const statusDot = document.querySelector<HTMLSpanElement>("#status-dot")!;
 const quickMarkdown = document.querySelector<HTMLButtonElement>("#quick-md")!;
+const copyMarkdown = document.querySelector<HTMLButtonElement>("#copy-md")!;
 const openReview = document.querySelector<HTMLButtonElement>("#open-review")!;
 const selectContainer = document.querySelector<HTMLButtonElement>("#select-container")!;
-const buttons = [quickMarkdown, openReview, selectContainer];
+const buttons = [quickMarkdown, copyMarkdown, openReview, selectContainer];
 
 function showStatus(text: string, isError?: boolean): void {
   setStatus(text, isError ? "error" : undefined);
 }
 
 quickMarkdown.addEventListener("click", () => void quickExport());
+copyMarkdown.addEventListener("click", () => void copyMarkdownToClipboard());
 openReview.addEventListener("click", () => void openReviewPage());
 selectContainer.addEventListener("click", () => void selectAndReview());
 
@@ -32,6 +34,16 @@ async function quickExport(): Promise<void> {
     const markdown = exportMarkdown(filtered);
     downloadBlob(blobFromText(markdown, "text/markdown;charset=utf-8"), `${slugify(filtered.source.title)}.md`);
     setStatus(`Saved ${filtered.messages.length} messages from ${response.adapterLabel}.`, "ready");
+  });
+}
+
+async function copyMarkdownToClipboard(): Promise<void> {
+  await withBusy(buttons, showStatus, "Preparing Markdown...", async () => {
+    const response = await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: false });
+    if (!response.ok) throw new Error(response.error);
+    const filtered = applyExportOptions(response.conversation, DEFAULT_EXPORT_OPTIONS);
+    await navigator.clipboard.writeText(exportMarkdown(filtered));
+    setStatus("Markdown copied to clipboard.", "ready");
   });
 }
 

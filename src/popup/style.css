@@ -11,6 +11,10 @@
   --privacy-bg: #eeece6;
 }
 
+html {
+  background: transparent;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16181a;
@@ -33,6 +37,8 @@ body {
   width: 340px;
   min-width: 320px;
   margin: 0;
+  overflow: hidden;
+  border-radius: 14px;
   background: var(--bg);
   color: var(--fg);
   font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -153,19 +159,17 @@ button.primary svg {
   gap: 7px;
 }
 
-.privacy {
+.markdown-actions {
   display: grid;
-  gap: 3px;
-  margin-top: 16px;
-  padding: 10px 11px;
-  border-radius: 8px;
-  background: var(--privacy-bg);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
+  grid-template-columns: minmax(0, 1fr) 45px;
+  gap: 6px;
 }
 
-.privacy strong {
-  color: var(--fg);
-  font-size: 12px;
+.markdown-actions button {
+  width: 100%;
+}
+
+.markdown-actions .icon-action {
+  justify-content: center;
+  padding: 0;
 }
