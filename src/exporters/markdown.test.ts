@@ -59,7 +59,7 @@ describe("exportMarkdown", () => {
     expect(markdown.indexOf("<details>")).toBeLessThan(markdown.indexOf("final answer"));
   });
 
-  it("uses activity labels as the details summary", () => {
+  it("renders pure-label activity as an italic line instead of an empty details block", () => {
     const thinking = makeMessage("assistant", 1, [{ type: "text", text: "Dachte 11 s nach" }]);
     thinking.metadata.kind = "activity";
     const tools = makeMessage("assistant", 2, [{ type: "text", text: "Web durchsucht" }]);
@@ -71,11 +71,12 @@ describe("exportMarkdown", () => {
       makeMessage("assistant", 3, [{ type: "text", text: "final answer" }])
     ]);
     const markdown = exportMarkdown(conversation);
-    expect(markdown).toContain("<details><summary>Dachte 11 s nach · Web durchsucht</summary>");
+    expect(markdown).toContain("_Dachte 11 s nach · Web durchsucht_");
+    expect(markdown).not.toContain("<details>");
     expect(markdown).not.toContain("previous message");
   });
 
-  it("combines activity labels with a count for mixed collapsed runs", () => {
+  it("keeps a details block when collapsed runs contain real content", () => {
     const thinking = makeMessage("assistant", 1, [{ type: "text", text: "Dachte 18 s nach" }]);
     thinking.metadata.kind = "activity";
     const reasoning = makeMessage("assistant", 2, [{ type: "text", text: "Ausführliche Überlegung" }]);

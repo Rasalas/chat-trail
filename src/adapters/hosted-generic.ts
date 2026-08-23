@@ -1,4 +1,6 @@
 import { ChatAdapter, ChatMessage, ProviderId } from "../shared/types";
+import { compactWhitespace } from "../shared/strings";
+import { stableId } from "../shared/hash";
 import {
   createBaseConversation,
   dropContained,
@@ -19,6 +21,7 @@ interface HostedProvider {
   hosts: RegExp[];
   modelPattern?: RegExp;
   messages?: HostedMessageSelector[];
+  thoughtsSelectors?: string[];
 }
 
 const providers: HostedProvider[] = [
@@ -30,7 +33,8 @@ const providers: HostedProvider[] = [
     messages: [
       { selector: "user-query", role: "user" },
       { selector: "model-response", role: "assistant" }
-    ]
+    ],
+    thoughtsSelectors: ["thoughts-panel", "model-thoughts", "[data-test-id='thoughts-panel']"]
   },
   { id: "perplexity", label: "Perplexity", hosts: [/(^|\.)perplexity\.ai$/], modelPattern: /sonar|perplexity|gpt|claude/i },
   { id: "copilot", label: "Copilot", hosts: [/(^|\.)copilot\.microsoft\.com$/, /(^|\.)bing\.com$/], modelPattern: /copilot|gpt/i },
@@ -72,6 +76,19 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
       for (const [index, { element, role }] of tagged.entries()) {
         if (seen.has(element)) continue;
         seen.add(element);
+
+        if (role === "assistant" && provider.thoughtsSelectors) {
+          const thoughts = collectThoughts(element, provider.thoughtsSelectors);
+          if (thoughts.length > 0) {
+            messages.push({
+              id: stableId(`${provider.id}-thoughts`, thoughts.join("\n")),
+              role: "assistant",
+              content: [{ type: "text", text: thoughts.join("\n") }],
+              metadata: { index, selector: provider.thoughtsSelectors.join(", "), kind: "activity" }
+            });
+          }
+        }
+
         const message = await elementToMessage(element, role, index, selectorFor(element));
         if (!message) continue;
         if (role === "assistant") message.metadata.model = model;
@@ -101,6 +118,17 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
     return conversation;
   }
 }));
+
+function collectThoughts(element: Element, selectors: string[]): string[] {
+  const lines: string[] = [];
+  for (const selector of selectors) {
+    for (const node of element.querySelectorAll(selector)) {
+      const line = compactWhitespace(node.textContent ?? "");
+      if (line && !lines.includes(line)) lines.push(line);
+    }
+  }
+  return lines;
+}
 
 function findModel(document: Document, pattern?: RegExp): string | undefined {
   if (!pattern) return undefined;

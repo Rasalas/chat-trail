@@ -90,12 +90,12 @@ function collectActivity(turn: Element): string[] {
 
   for (const toggle of turn.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")) {
     const label = compactWhitespace(toggle.textContent ?? "");
-    if (/nachgedacht|thought/i.test(label)) items.push(label);
+    if (/nachgedacht|thought/i.test(label) && !items.includes(label)) items.push(label);
   }
 
   for (const pile of turn.querySelectorAll("[data-testid='cot-v5-tool-icon-pile']")) {
     const label = compactWhitespace(pile.textContent ?? "").replace(/\s*\+\d+$/, "");
-    if (label) items.push(label);
+    if (label && !items.includes(label)) items.push(label);
   }
 
   return items;

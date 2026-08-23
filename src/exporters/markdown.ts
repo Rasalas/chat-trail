@@ -1,6 +1,8 @@
 import { ChatMessage, ConversationExport, ContentBlock } from "../shared/types";
 import { intermediateAssistantFlags } from "./turns";
 
+const LABEL_MAX_LENGTH = 80;
+
 export function exportMarkdown(conversation: ConversationExport): string {
   const lines: string[] = [
     ...frontmatter(conversation),
@@ -26,7 +28,7 @@ export function exportMarkdown(conversation: ConversationExport): string {
       renderMessageBody(message)
         .split("\n")
         .map(compactLine)
-        .filter(Boolean)
+        .filter((line) => line.length > 0 && line.length <= LABEL_MAX_LENGTH)
         .forEach((line) => {
           if (!labels.includes(line)) labels.push(line);
         });
@@ -35,15 +37,22 @@ export function exportMarkdown(conversation: ConversationExport): string {
     const shownLabels = labels.slice(0, 4);
     if (labels.length > 4) shownLabels.push(`+${labels.length - 4}`);
     let summary = shownLabels.join(" · ");
-    const suffix = `${others.length} previous message${others.length === 1 ? "" : "s"}`;
-    summary = summary ? (others.length > 0 ? `${summary} · ${suffix}` : summary) : suffix;
+    if (others.length > 0) {
+      const suffix = `${others.length} previous message${others.length === 1 ? "" : "s"}`;
+      summary = summary ? `${summary} · ${suffix}` : suffix;
+    }
+
+    if (others.length === 0 && labels.length > 0) {
+      lines.push(`_${escapeHtml(summary)}_`, "");
+      collapsed = [];
+      return;
+    }
 
     lines.push(`<details><summary>${escapeHtml(summary)}</summary>`, "");
     collapsed.forEach((message) => {
+      if (message.metadata.kind === "activity") return;
       const body = renderMessageBody(message);
-      if (!body) return;
-      if (message.metadata.kind === "activity" && bodyRedundantWithLabels(body, labels)) return;
-      lines.push(body, "");
+      if (body) lines.push(body, "");
     });
     lines.push("</details>", "");
     collapsed = [];
@@ -64,11 +73,6 @@ export function exportMarkdown(conversation: ConversationExport): string {
   flushCollapsed();
 
   return lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd() + "\n";
-}
-
-function bodyRedundantWithLabels(body: string, labels: string[]): boolean {
-  const lines = body.split("\n").map(compactLine).filter(Boolean);
-  return lines.length > 0 && lines.every((line) => labels.includes(line));
 }
 
 function compactLine(line: string): string {
