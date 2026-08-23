@@ -8,21 +8,14 @@ function optionsWith(overrides: Partial<typeof DEFAULT_EXPORT_OPTIONS>) {
 }
 
 describe("applyExportOptions", () => {
-  it("drops user messages when includeUser is off", () => {
+  it("drops image blocks when includeImages is off", () => {
     const conversation = makeConversation([
-      makeMessage("user", 0, [{ type: "text", text: "question" }]),
-      makeMessage("assistant", 1, [{ type: "text", text: "answer" }])
+      makeMessage("assistant", 0, [
+        { type: "text", text: "kept" },
+        { type: "image", src: "https://example.com/x.png", filename: "x.png" }
+      ])
     ]);
-    const filtered = applyExportOptions(conversation, optionsWith({ includeUser: false }));
-    expect(filtered.messages.map((message) => message.role)).toEqual(["assistant"]);
-  });
-
-  it("removes code blocks and then empty messages", () => {
-    const conversation = makeConversation([
-      makeMessage("assistant", 0, [{ type: "code", text: "x()" }]),
-      makeMessage("assistant", 1, [{ type: "text", text: "kept" }, { type: "code", text: "y()" }])
-    ]);
-    const filtered = applyExportOptions(conversation, optionsWith({ includeCode: false }));
+    const filtered = applyExportOptions(conversation, optionsWith({ includeImages: false }));
     expect(filtered.messages).toHaveLength(1);
     expect(filtered.messages[0].content).toEqual([{ type: "text", text: "kept" }]);
   });

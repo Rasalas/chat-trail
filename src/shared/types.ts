@@ -82,11 +82,6 @@ export interface ChatAdapter {
 }
 
 export interface ExportOptions {
-  includeUser: boolean;
-  includeAssistant: boolean;
-  includeCode: boolean;
-  includeTables: boolean;
-  includeCitations: boolean;
   includeImages: boolean;
   includeMetadata: boolean;
   collapseIntermediate: boolean;
@@ -110,15 +105,10 @@ export interface ExtractionFailure {
 export type RuntimeResponse = ExtractionResult | ExtractionFailure;
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
-  includeUser: true,
-  includeAssistant: true,
-  includeCode: true,
-  includeTables: true,
-  includeCitations: true,
-    includeImages: true,
-    includeMetadata: true,
-    collapseIntermediate: true,
-    anonymizeUrl: false,
+  includeImages: true,
+  includeMetadata: true,
+  collapseIntermediate: true,
+  anonymizeUrl: false,
   redactSecrets: true,
   useProviderCopy: false
 };

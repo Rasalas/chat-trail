@@ -12,7 +12,7 @@ import { sha256Hex, stableId } from "../shared/hash";
 import { readableTabError, getActiveTabId, sendToTabWithContentScript } from "../shared/tabs";
 import { withBusy } from "../shared/ui";
 import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
-import { renderMarkdown } from "./markdown";
+import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const messagesRoot = document.querySelector<HTMLElement>("#messages")!;
@@ -101,12 +101,12 @@ function render(): void {
   const preview = applyExportOptions(pickSelectedMessages(), options);
   summary.textContent = `${preview.messages.length} of ${conversation.messages.length} messages · ${conversation.source.provider} · ${conversation.source.title}`;
 
-  if (conversation.messages.length === 0) {
-    messagesRoot.innerHTML = `<div class="empty">No messages detected. Use the popup's container selection on pages with unusual layouts.</div>`;
+  if (preview.messages.length === 0) {
+    messagesRoot.innerHTML = `<div class="empty">No messages selected for export.</div>`;
     return;
   }
 
-  messagesRoot.replaceChildren(...conversation.messages.map(messageNode));
+  messagesRoot.replaceChildren(...preview.messages.map(messageNode));
 }
 
 function messageNode(message: ChatMessage): HTMLElement {
@@ -180,7 +180,7 @@ function editorNode(message: ChatMessage): HTMLElement {
   wrap.className = "message-editor";
 
   const textarea = document.createElement("textarea");
-  textarea.value = message.content.map(blockToMarkdown).join("\n\n");
+  textarea.value = contentToMarkdown(message.content);
   textarea.spellcheck = false;
   const autoGrow = () => {
     textarea.style.height = "auto";
@@ -272,27 +272,6 @@ function blockToPlainText(block: ContentBlock): string {
   if (block.type === "table") return block.markdown;
   if (block.type === "quote") return block.text;
   return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
-}
-
-function blockToMarkdown(block: ContentBlock): string {
-  switch (block.type) {
-    case "text":
-      return block.text;
-    case "code":
-      return `\`\`\`${block.language ?? ""}\n${block.text}\n\`\`\``;
-    case "table":
-      return block.markdown;
-    case "quote":
-      return block.text
-        .split("\n")
-        .map((line) => `> ${line}`)
-        .join("\n");
-    case "image": {
-      if (!block.src) return block.alt ?? block.filename ?? "";
-      const alt = block.alt && !/^https?:/i.test(block.alt) ? block.alt.replace(/[[\]]/g, "") : "";
-      return `![${alt}](${block.src})`;
-    }
-  }
 }
 
 async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): Promise<void> {

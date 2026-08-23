@@ -1,3 +1,5 @@
+import { ContentBlock } from "./types";
+
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
 function escapeHtml(text: string): string {
@@ -6,6 +8,31 @@ function escapeHtml(text: string): string {
 
 function safeUrl(url: string): boolean {
   return /^(https?:|mailto:|#|\/)/i.test(url);
+}
+
+export function contentToMarkdown(blocks: ContentBlock[]): string {
+  return blocks.map(blockToMarkdown).join("\n\n");
+}
+
+function blockToMarkdown(block: ContentBlock): string {
+  switch (block.type) {
+    case "text":
+      return block.text;
+    case "code":
+      return `\`\`\`${block.language ?? ""}\n${block.text}\n\`\`\``;
+    case "table":
+      return block.markdown;
+    case "quote":
+      return block.text
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+    case "image": {
+      if (!block.src) return block.alt ?? block.filename ?? "";
+      const alt = block.alt && !/^https?:/i.test(block.alt) ? block.alt.replace(/[[\]]/g, "") : "";
+      return `![${alt}](${block.src})`;
+    }
+  }
 }
 
 export function renderMarkdown(source: string): string {
@@ -61,6 +88,18 @@ export function renderMarkdown(source: string): string {
       const parsed = parseList(lines, index, indentOf(line));
       out.push(parsed.html);
       index = parsed.next;
+      continue;
+    }
+
+    if (line.trim().startsWith("<details>")) {
+      const block: string[] = [];
+      while (index < lines.length) {
+        block.push(lines[index]);
+        const closing = /<\/details>/i.test(lines[index]);
+        index += 1;
+        if (closing) break;
+      }
+      out.push(block.join("\n"));
       continue;
     }
 

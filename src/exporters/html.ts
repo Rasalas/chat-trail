@@ -1,15 +1,19 @@
 import { ConversationExport, ContentBlock } from "../shared/types";
 import { escapeHtml } from "../shared/strings";
+import { renderMarkdown } from "../shared/markdown";
 
 export function exportHtml(conversation: ConversationExport): string {
   const messages = conversation.messages.map((message) => {
     const body = message.content.map(renderBlock).join("\n");
-    const meta = message.metadata.timestamp ? `<time>${escapeHtml(message.metadata.timestamp)}</time>` : "";
-    return `<article class="message ${escapeHtml(message.role)}">
-  <header><strong>${escapeHtml(message.role)}</strong>${meta}</header>
-  <div class="content">${body}</div>
-</article>`;
+    return `<div class="message-row ${escapeHtml(message.role)}">
+  <div class="message-body">${body}</div>
+</div>`;
   });
+
+  const meta = [conversation.source.provider, conversation.source.model, conversation.source.captured_at]
+    .filter(Boolean)
+    .map((value) => escapeHtml(String(value)))
+    .join(" · ");
 
   return `<!doctype html>
 <html lang="en">
@@ -18,41 +22,68 @@ export function exportHtml(conversation: ConversationExport): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(conversation.source.title || "Chat Export")}</title>
   <style>
-    :root { color-scheme: light; font-family: ui-serif, Georgia, "Times New Roman", serif; background: #f8f6f0; color: #171717; }
-    body { margin: 0; padding: 40px 18px; }
-    main { max-width: 920px; margin: 0 auto; }
-    .source { border-bottom: 2px solid #171717; padding-bottom: 18px; margin-bottom: 28px; }
-    .source h1 { font-size: 28px; line-height: 1.1; margin: 0 0 12px; }
-    .source dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
-    .source dt { font-weight: 700; }
-    .source dd { margin: 0; overflow-wrap: anywhere; }
-    .message { border: 1px solid #d2cfc4; background: #fffefa; margin: 16px 0; padding: 18px; border-radius: 6px; }
-    .message.user { border-left: 5px solid #0d6b57; }
-    .message.assistant { border-left: 5px solid #9d3f2f; }
-    header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; text-transform: uppercase; font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
-    time { color: #5f5b51; text-transform: none; font-weight: 400; }
-    pre { white-space: pre-wrap; overflow-x: auto; padding: 14px; background: #171717; color: #f7f1df; border-radius: 4px; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-    th, td { border: 1px solid #c9c3b3; padding: 7px 9px; text-align: left; }
-    blockquote { border-left: 3px solid #8f8774; margin: 12px 0; padding-left: 12px; color: #3f3b33; }
-    a { color: #0a5f8f; }
-    img { max-width: 100%; height: auto; }
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f6f3; --fg: #1a1a1a; --muted: #6d6a63; --border: #e2dfd8;
+      --bubble-user: #dcefe9; --bubble-user-fg: #12332c; --accent: #0d6b57;
+      --code-bg: #f0eee9; --quote-bar: #c9c4b8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181a; --fg: #e8e6e1; --muted: #9a968d; --border: #2b2e31;
+        --bubble-user: #24443c; --bubble-user-fg: #d9ebe5; --accent: #35a08a;
+        --code-bg: #232629; --quote-bar: #4a4d50;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+    header { margin-bottom: 24px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+    h1 { margin: 0; font-size: 22px; line-height: 1.2; }
+    .meta { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .messages { display: flex; flex-direction: column; gap: 4px; }
+    .message-row { display: flex; }
+    .message-row.user { justify-content: flex-end; }
+    .message-body { max-width: 75%; padding: 10px 14px; border-radius: 14px; overflow-wrap: break-word; }
+    .message-row.user .message-body { background: var(--bubble-user); color: var(--bubble-user-fg); border-bottom-right-radius: 4px; }
+    .message-row.assistant .message-body, .message-row.system .message-body, .message-row.unknown .message-body { max-width: 100%; padding: 6px 10px; }
+    .bubble-text { white-space: pre-wrap; }
+    :is(h1, h2, h3, h4, h5, h6) { margin: 14px 0 6px; line-height: 1.3; font-size: 16px; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0; padding-left: 22px; }
+    li { margin: 3px 0; }
+    pre { margin: 10px 0; padding: 12px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; font-size: 13px; line-height: 1.45; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; background: var(--code-bg); border-radius: 4px; padding: 1px 4px; }
+    pre code { background: none; padding: 0; }
+    table { margin: 10px 0; border-collapse: collapse; font-size: 13.5px; }
+    :is(th, td) { padding: 6px 10px; border: 1px solid var(--border); text-align: left; }
+    blockquote { margin: 8px 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--quote-bar); color: var(--muted); }
+    img { max-width: 100%; height: auto; border-radius: 8px; }
+    figure { margin: 10px 0; }
+    figcaption { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    a { color: var(--accent); }
+    hr { margin: 14px 0; border: none; border-top: 1px solid var(--border); }
+    details { margin: 8px 0; }
+    summary { cursor: pointer; color: var(--muted); }
+    @media print {
+      body { background: #fff; color: #000; }
+      .message-row { break-inside: avoid; }
+      .message-body { max-width: 100%; }
+      .message-row.user .message-body { background: #eef5f2; color: #000; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <section class="source">
+    <header>
       <h1>${escapeHtml(conversation.source.title || "Chat Export")}</h1>
-      <dl>
-        <dt>Provider</dt><dd>${escapeHtml(conversation.source.provider)}</dd>
-        <dt>Captured</dt><dd>${escapeHtml(conversation.source.captured_at)}</dd>
-        <dt>URL</dt><dd>${escapeHtml(conversation.source.url)}</dd>
-        ${conversation.source.model ? `<dt>Model</dt><dd>${escapeHtml(conversation.source.model)}</dd>` : ""}
-      </dl>
+      <p class="meta">${meta}${conversation.source.url ? ` · ${escapeHtml(conversation.source.url)}` : ""}</p>
+    </header>
+    <section class="messages">
+      ${messages.join("\n")}
     </section>
-    ${messages.join("\n")}
   </main>
+  <script>window.addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => (d.open = true)));</script>
 </body>
 </html>`;
 }
@@ -60,30 +91,19 @@ export function exportHtml(conversation: ConversationExport): string {
 function renderBlock(block: ContentBlock): string {
   switch (block.type) {
     case "text":
-      return `<p>${escapeHtml(block.text).replace(/\n/g, "<br>")}</p>`;
+      return renderMarkdown(block.text);
     case "code":
       return `<pre><code>${escapeHtml(block.text)}</code></pre>`;
     case "table":
-      return markdownTableToHtml(block.markdown);
+      return renderMarkdown(block.markdown);
     case "quote":
-      return `<blockquote>${escapeHtml(block.text)}</blockquote>`;
-    case "image":
-      return block.src
-        ? `<figure><img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}"><figcaption>${escapeHtml(block.filename ?? block.alt ?? "")}</figcaption></figure>`
-        : `<p>${escapeHtml(block.filename ?? block.alt ?? "image")}</p>`;
+      return `<blockquote>${renderMarkdown(block.text)}</blockquote>`;
+    case "image": {
+      const label = block.filename ?? block.alt ?? "";
+      const caption = label && !/^[a-z0-9_-]{32,}$/i.test(label) ? label : "";
+      if (!block.src) return `<p>${escapeHtml(label || "image")}</p>`;
+      const img = `<img src="${escapeHtml(block.src)}" alt="${escapeHtml(block.alt ?? "")}" loading="lazy" referrerpolicy="no-referrer">`;
+      return `<figure>${img}${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}</figure>`;
+    }
   }
-}
-
-function markdownTableToHtml(markdown: string): string {
-  const rows = markdown
-    .split("\n")
-    .filter((line) => !/^\|\s*-/.test(line))
-    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
-
-  return `<table>${rows
-    .map((row, index) => {
-      const tag = index === 0 ? "th" : "td";
-      return `<tr>${row.map((cell) => `<${tag}>${escapeHtml(cell)}</${tag}>`).join("")}</tr>`;
-    })
-    .join("")}</table>`;
 }
