@@ -108,22 +108,43 @@ function syncClipboardNote(): void {
 
 async function loadConversation(preferManualSelection: boolean): Promise<void> {
   const options = readOptions();
-  const label = options.useProviderCopy
+  const label = preferManualSelection
+    ? "Reading selected area..."
+    : options.useProviderCopy
     ? "Reading current tab... (copy buttons are clicked; the clipboard is read and restored)"
     : "Reading current tab...";
   await withBusy(actionButtons, showSummary, label, async () => {
-    const stored = preferManualSelection ? await chrome.storage.session.get("manualSelection") : {};
+    const stored = preferManualSelection
+      ? await chrome.storage.session.get(["manualSelection", "manualSelectionPending", "manualSelectionError"])
+      : {};
     const storedResponse = stored.manualSelection as RuntimeResponse | undefined;
     const response = storedResponse?.ok
       ? storedResponse
+      : preferManualSelection && stored.manualSelectionPending?.state === "extracting"
+        ? await waitForManualSelection()
+        : stored.manualSelectionError
+          ? (() => {
+              throw new Error(String(stored.manualSelectionError));
+            })()
       : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: options.useProviderCopy });
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
-    await chrome.storage.session.remove("manualSelection");
+    await chrome.storage.session.remove(["manualSelection", "manualSelectionPending", "manualSelectionError"]);
     render();
   });
+}
+
+async function waitForManualSelection(): Promise<RuntimeResponse> {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    const stored = await chrome.storage.session.get(["manualSelection", "manualSelectionError"]);
+    const response = stored.manualSelection as RuntimeResponse | undefined;
+    if (response?.ok) return response;
+    if (stored.manualSelectionError) throw new Error(String(stored.manualSelectionError));
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  throw new Error("Container extraction timed out.");
 }
 
 function render(): void {

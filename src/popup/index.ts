@@ -59,8 +59,8 @@ async function selectAndReview(): Promise<void> {
   await withBusy(buttons, showStatus, "Switch to the page and click a chat container.", async () => {
     const response = await sendToActiveTab({ type: "START_CONTAINER_SELECTION" });
     if (!response.ok) throw new Error(response.error);
-    await chrome.storage.session.set({ manualSelection: response });
-    await openReviewPage();
+    setStatus("Selection mode started. Choose an area on the page or cancel with Esc.", "ready");
+    window.close();
   });
 }
 
