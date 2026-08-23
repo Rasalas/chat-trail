@@ -77,7 +77,7 @@ button:disabled {
 }
 
 .review-shell {
-  max-width: 1080px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 18px 20px 60px;
 }
@@ -87,7 +87,7 @@ button:disabled {
   flex-direction: column;
   gap: 14px;
   padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
 }
 
 .brand-row {
@@ -95,6 +95,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  width: min(100%, 860px);
+  margin: 0 auto;
 }
 
 .brand {
@@ -108,9 +110,9 @@ button:disabled {
 }
 
 .brand-mark {
-  width: 17px;
-  height: 17px;
-  color: var(--accent);
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
 }
 
 .topbar-actions {
@@ -121,6 +123,8 @@ button:disabled {
 
 .title-block {
   min-width: 0;
+  width: min(100%, 860px);
+  margin: 0 auto;
 }
 
 h1 {

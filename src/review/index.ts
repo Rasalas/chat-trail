@@ -137,7 +137,7 @@ function render(): void {
 
 function metaLine(conversation: ConversationExport, count: number): string {
   const parts = [
-    `${count} of ${conversation.messages.length} messages`,
+    count === conversation.messages.length ? `${conversation.messages.length} messages` : `${count} of ${conversation.messages.length} messages`,
     conversation.source.provider,
     conversation.source.model,
     conversation.source.captured_at ? `captured ${conversation.source.captured_at}` : undefined,
