@@ -117,8 +117,10 @@ function prepareBody(row: Element, activity: string[]): Element {
   }
 
   for (const artifact of [...clone.querySelectorAll('[class*="artifact-block"]')]) {
+    if (artifact.parentElement?.closest('[class*="artifact-block"]')) continue;
     const title = compactWhitespace(artifact.querySelector('[class*="line-clamp-1"]')?.textContent ?? "");
-    if (title) activity.push(`Artefakt: ${title}`);
+    const label = `Artefakt: ${title}`;
+    if (title && !activity.includes(label)) activity.push(label);
     artifact.remove();
   }
 
@@ -164,7 +166,8 @@ export function splitAssistantActivity(message: ChatMessage): { cleaned: ChatMes
       }
 
       if (paragraph && ARTIFACT_CHIP.test(next)) {
-        activity.push(`Artefakt: ${paragraph}`);
+        const label = `Artefakt: ${paragraph}`;
+        if (!activity.includes(label)) activity.push(label);
         i += 1;
         continue;
       }

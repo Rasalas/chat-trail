@@ -23,8 +23,13 @@ export function exportMarkdown(conversation: ConversationExport): string {
         others.push(message);
         return;
       }
-      const label = firstLine(renderMessageBody(message));
-      if (label && !labels.includes(label)) labels.push(label);
+      renderMessageBody(message)
+        .split("\n")
+        .map(compactLine)
+        .filter(Boolean)
+        .forEach((line) => {
+          if (!labels.includes(line)) labels.push(line);
+        });
     });
 
     const shownLabels = labels.slice(0, 4);
@@ -36,7 +41,9 @@ export function exportMarkdown(conversation: ConversationExport): string {
     lines.push(`<details><summary>${escapeHtml(summary)}</summary>`, "");
     collapsed.forEach((message) => {
       const body = renderMessageBody(message);
-      if (body) lines.push(body, "");
+      if (!body) return;
+      if (message.metadata.kind === "activity" && bodyRedundantWithLabels(body, labels)) return;
+      lines.push(body, "");
     });
     lines.push("</details>", "");
     collapsed = [];
@@ -59,8 +66,9 @@ export function exportMarkdown(conversation: ConversationExport): string {
   return lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd() + "\n";
 }
 
-function firstLine(text: string): string {
-  return compactLine(text.split("\n").find((line) => line.trim().length > 0) ?? "");
+function bodyRedundantWithLabels(body: string, labels: string[]): boolean {
+  const lines = body.split("\n").map(compactLine).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => labels.includes(line));
 }
 
 function compactLine(line: string): string {

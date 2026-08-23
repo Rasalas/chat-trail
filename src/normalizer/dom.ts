@@ -284,7 +284,8 @@ async function pushImage(image: HTMLImageElement, blocks: ContentBlock[], seenIm
   const src = image.currentSrc || image.src;
   if (src && /favicon|sprite|\/icons?\/|^data:image\/svg/i.test(src)) return;
 
-  const alt = image.alt || image.title;
+  const rawAlt = image.alt || image.title;
+  const alt = rawAlt && /^https?:\/\//i.test(rawAlt) ? undefined : rawAlt;
   const data_url = await imageToDataUrl(image);
   if (src || alt || data_url) {
     blocks.push({
