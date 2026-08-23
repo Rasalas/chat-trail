@@ -17,16 +17,17 @@ describe("manual generic container extraction", () => {
       <footer>Footer navigation</footer>`;
   });
 
-  it("captures a selected document as one assistant message", async () => {
+  it("captures a selected document as separate assistant sections", async () => {
     const conversation = await extractFromContainer(document.querySelector("#story")!, document);
 
-    expect(conversation.messages).toHaveLength(1);
-    expect(conversation.messages[0].role).toBe("assistant");
-    expect(conversation.messages[0].content).toEqual([
-      {
-        type: "text",
-        text: "## Eine Meldung\n\nDer erste Absatz enthält den eigentlichen Artikeltext.\n\n### Details\n\nEin weiterer Absatz mit relevanten Informationen.\n\n- Erster Punkt\n- Zweiter Punkt"
-      }
+    expect(conversation.messages).toHaveLength(5);
+    expect(conversation.messages.every((message) => message.role === "assistant")).toBe(true);
+    expect(conversation.messages.map((message) => message.content[0])).toEqual([
+      { type: "text", text: "## Eine Meldung" },
+      { type: "text", text: "Der erste Absatz enthält den eigentlichen Artikeltext." },
+      { type: "text", text: "### Details" },
+      { type: "text", text: "Ein weiterer Absatz mit relevanten Informationen." },
+      { type: "text", text: "- Erster Punkt\n- Zweiter Punkt" }
     ]);
   });
 });

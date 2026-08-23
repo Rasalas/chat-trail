@@ -37,25 +37,13 @@ export async function extractFromContainer(container: Element, document: Documen
   const messageElements = findLikelyMessages(container);
 
   if (!looksLikeChatContainer(container, messageElements)) {
-    const content = await extractContentBlocks(container);
-    const visibleText = compactWhitespace(
-      content
-        .map((block) => {
-          if (block.type === "text" || block.type === "code" || block.type === "quote") return block.text;
-          if (block.type === "table") return block.markdown;
-          return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
-        })
-        .join("\n")
-    );
-    if (content.length > 0) {
-      const message: ChatMessage = {
-        id: stableId("document", visibleText || container.outerHTML.slice(0, 512)),
-        role: "assistant",
-        content,
-        metadata: { index: 0, selector: selectorFor(container) }
-      };
-      conversation.messages = [message];
-    }
+    const segments = await extractDocumentSegments(container);
+    conversation.messages = segments.map((content, index) => ({
+      id: stableId("document", `${index}:${contentKey(content)}`),
+      role: "assistant",
+      content,
+      metadata: { index, selector: selectorFor(container) }
+    }));
     return conversation;
   }
 
@@ -68,6 +56,49 @@ export async function extractFromContainer(container: Element, document: Documen
 
   conversation.messages = messages;
   return conversation;
+}
+
+async function extractDocumentSegments(container: Element): Promise<ChatMessage["content"][]> {
+  const roots: Element[] = [];
+  collectDocumentSegmentRoots(container, roots);
+
+  const segments: ChatMessage["content"][] = [];
+  for (const root of roots) {
+    const wrapper = root.ownerDocument?.createElement("div");
+    if (!wrapper) continue;
+    wrapper.append(root.cloneNode(true));
+    const content = await extractContentBlocks(wrapper);
+    if (content.length > 0) segments.push(content);
+  }
+
+  if (segments.length > 0) return segments;
+  const content = await extractContentBlocks(container);
+  return content.length > 0 ? [content] : [];
+}
+
+function collectDocumentSegmentRoots(root: Element, segments: Element[]): void {
+  if (root !== root.ownerDocument?.body && root.matches("nav, header, footer, aside, form")) return;
+  if (root !== root.ownerDocument?.body && isDocumentBoundary(root)) {
+    segments.push(root);
+    return;
+  }
+
+  for (const child of [...root.children]) collectDocumentSegmentRoots(child, segments);
+}
+
+function isDocumentBoundary(element: Element): boolean {
+  return /^(H[1-6]|P|UL|OL|PRE|TABLE|BLOCKQUOTE|FIGURE|DETAILS|HR|SECTION)$/.test(element.tagName);
+}
+
+function contentKey(content: ChatMessage["content"]): string {
+  return content
+    .map((block) => {
+      if (block.type === "text" || block.type === "code" || block.type === "quote") return block.text;
+      if (block.type === "table") return block.markdown;
+      return `${block.alt ?? ""}:${block.src ?? ""}:${block.filename ?? ""}`;
+    })
+    .join("\n")
+    .slice(0, 500);
 }
 
 function looksLikeChatContainer(container: Element, messageElements: Element[]): boolean {
