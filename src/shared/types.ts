@@ -36,7 +36,7 @@ export interface ChatMessage {
     index?: number;
     visibleTextHash?: string;
     extractionMethod?: "dom" | "provider-copy";
-    kind?: "activity";
+    kind?: "activity" | "document";
   };
 }
 

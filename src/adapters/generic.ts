@@ -42,7 +42,7 @@ export async function extractFromContainer(container: Element, document: Documen
       id: stableId("document", `${index}:${contentKey(content)}`),
       role: "assistant",
       content,
-      metadata: { index, selector: selectorFor(container) }
+      metadata: { index, selector: selectorFor(container), kind: "document" }
     }));
     return conversation;
   }
@@ -103,11 +103,25 @@ function contentKey(content: ChatMessage["content"]): string {
 
 function looksLikeChatContainer(container: Element, messageElements: Element[]): boolean {
   if (messageElements.length < 2) return false;
-  return Boolean(
-    container.querySelector(
-      "[data-message-author-role], [data-role], [data-author-role], [class*='user-message' i], [class*='assistant-message' i]"
-    )
-  );
+  const roles = [...container.querySelectorAll("[data-message-author-role], [data-role], [data-author-role], [class*='user-message' i], [class*='assistant-message' i]")]
+    .map(explicitChatRole)
+    .filter((role): role is "user" | "assistant" => role !== undefined);
+  return roles.includes("user") && roles.includes("assistant");
+}
+
+function explicitChatRole(element: Element): "user" | "assistant" | undefined {
+  const marker = [
+    element.getAttribute("data-message-author-role"),
+    element.getAttribute("data-author-role"),
+    element.getAttribute("data-role"),
+    element.className?.toString()
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/(^|[\s_-])(user|human)([\s_-]|$)/.test(marker)) return "user";
+  if (/(^|[\s_-])(assistant|bot|ai)([\s_-]|$)/.test(marker)) return "assistant";
+  return undefined;
 }
 
 function findLikelyChatRoot(document: Document): Element {

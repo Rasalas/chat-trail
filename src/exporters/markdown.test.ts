@@ -100,4 +100,17 @@ describe("exportMarkdown", () => {
     ]);
     expect(exportMarkdown(conversation)).toContain("<details><summary>2 previous messages</summary>");
   });
+
+  it("renders consecutive document sections as flowing Markdown", () => {
+    const heading = makeMessage("assistant", 0, [{ type: "text", text: "## Eine Meldung" }]);
+    heading.metadata.kind = "document";
+    const paragraph = makeMessage("assistant", 1, [{ type: "text", text: "Der eigentliche Artikeltext." }]);
+    paragraph.metadata.kind = "document";
+
+    const markdown = exportMarkdown(makeConversation([heading, paragraph]));
+
+    expect(markdown).toContain("## Eine Meldung\n\nDer eigentliche Artikeltext.");
+    expect(markdown).not.toContain("<details>");
+    expect(markdown).not.toContain("previous message");
+  });
 });

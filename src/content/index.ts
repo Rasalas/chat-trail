@@ -42,29 +42,32 @@ async function handleMessage(
 async function selectContainerAndOpenReview(): Promise<void> {
   try {
     const container = await pickContainer();
-    await chrome.storage.session.remove(["manualSelection", "manualSelectionError"]);
-    await chrome.storage.session.set({
-      manualSelectionPending: { state: "extracting" }
-    });
-    await chrome.runtime.sendMessage({ type: "OPEN_REVIEW" });
+    await sendBackgroundMessage({ type: "OPEN_REVIEW" });
     const conversation = await extractFromContainer(container, document);
-    await chrome.storage.session.set({
-      manualSelection: {
+    await sendBackgroundMessage({
+      type: "COMPLETE_MANUAL_SELECTION",
+      response: {
         ok: true,
         conversation,
         adapterId: "generic",
-        adapterLabel: "Generic Web Chat"
+        adapterLabel: "Selected web content"
       }
     });
-    await chrome.storage.session.remove("manualSelectionPending");
   } catch (error) {
     if (error instanceof Error && error.message === "Container selection cancelled.") return;
-    await chrome.storage.session.set({
-      manualSelectionError: error instanceof Error ? error.message : String(error)
-    });
-    await chrome.storage.session.remove("manualSelectionPending");
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await sendBackgroundMessage({ type: "FAIL_MANUAL_SELECTION", error: message });
+    } catch (notificationError) {
+      console.warn("Could not report container selection failure.", notificationError);
+    }
     console.warn("Container selection failed.", error);
   }
+}
+
+async function sendBackgroundMessage(message: object): Promise<void> {
+  const response = (await chrome.runtime.sendMessage(message)) as { ok?: boolean; error?: string } | undefined;
+  if (!response?.ok) throw new Error(response?.error || "The extension background service did not respond.");
 }
 
 export function snapshotHtml(): string {

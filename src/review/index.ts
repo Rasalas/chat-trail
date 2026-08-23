@@ -167,8 +167,11 @@ function render(): void {
 }
 
 function metaLine(conversation: ConversationExport, count: number): string {
+  const unit = conversation.messages.length > 0 && conversation.messages.every((message) => message.metadata.kind === "document")
+    ? "sections"
+    : "messages";
   const parts = [
-    count === conversation.messages.length ? `${conversation.messages.length} messages` : `${count} of ${conversation.messages.length} messages`,
+    count === conversation.messages.length ? `${conversation.messages.length} ${unit}` : `${count} of ${conversation.messages.length} ${unit}`,
     conversation.source.provider,
     conversation.source.model,
     conversation.source.captured_at ? `captured ${conversation.source.captured_at}` : undefined,
@@ -180,13 +183,15 @@ function metaLine(conversation: ConversationExport, count: number): string {
 function messageNode(message: ChatMessage): HTMLElement {
   const included = selectedIds.has(message.id);
   const row = document.createElement("div");
-  row.className = `message-row ${message.role} ${included ? "included" : "removed"}`;
+  row.className = `message-row ${message.role} ${message.metadata.kind ?? ""} ${included ? "included" : "removed"}`;
 
   if (!included) {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "message-restore";
-    restore.textContent = `${message.role} message removed — click to restore`;
+    restore.textContent = message.metadata.kind === "document"
+      ? "Document section removed — click to restore"
+      : `${message.role} message removed — click to restore`;
     restore.title = "Include again";
     restore.addEventListener("click", () => {
       selectedIds.add(message.id);
