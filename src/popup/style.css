@@ -13,6 +13,8 @@
 
 html {
   background: transparent;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -38,7 +40,7 @@ body {
   min-width: 320px;
   margin: 0;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg);
   color: var(--fg);
   font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
