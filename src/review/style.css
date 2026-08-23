@@ -84,36 +84,59 @@ button:disabled {
 
 .topbar {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }
 
-.topbar-title {
-  min-width: 0;
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-h1 {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.2;
-}
-
-.summary {
-  margin: 4px 0 0;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
   font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.brand-mark {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.title-block {
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.meta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 button.icon,

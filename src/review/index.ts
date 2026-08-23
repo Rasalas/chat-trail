@@ -15,6 +15,7 @@ import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, 
 import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
+const chatTitle = document.querySelector<HTMLElement>("#chat-title")!;
 const messagesRoot = document.querySelector<HTMLElement>("#messages")!;
 const refreshButton = document.querySelector<HTMLButtonElement>("#refresh")!;
 const selectAllButton = document.querySelector<HTMLButtonElement>("#select-all")!;
@@ -123,7 +124,8 @@ function render(): void {
 
   const options = readOptions();
   const preview = applyExportOptions(pickSelectedMessages(), options);
-  summary.textContent = `${preview.messages.length} of ${conversation.messages.length} messages · ${conversation.source.provider} · ${conversation.source.title}`;
+  chatTitle.textContent = conversation.source.title || "Chat Export";
+  summary.textContent = metaLine(conversation, preview.messages.length);
 
   if (preview.messages.length === 0) {
     messagesRoot.innerHTML = `<div class="empty">No messages selected for export.</div>`;
@@ -131,6 +133,17 @@ function render(): void {
   }
 
   messagesRoot.replaceChildren(...preview.messages.map(messageNode));
+}
+
+function metaLine(conversation: ConversationExport, count: number): string {
+  const parts = [
+    `${count} of ${conversation.messages.length} messages`,
+    conversation.source.provider,
+    conversation.source.model,
+    conversation.source.captured_at ? `captured ${conversation.source.captured_at}` : undefined,
+    conversation.source.url
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 function messageNode(message: ChatMessage): HTMLElement {
