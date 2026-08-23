@@ -9,10 +9,10 @@
     <main class="review-shell">
       <header class="topbar">
         <div class="brand-row">
-          <div class="brand">
+          <a class="brand" href="https://chromewebstore.google.com/detail/chat-trail/bagpiboaacjkacgmejnnieikoaloeoji" target="_blank" rel="noopener noreferrer" title="Open Chat Trail in the Chrome Web Store">
             <img class="brand-mark" src="/icons/icon-32.png" alt="" />
             Chat Trail
-          </div>
+          </a>
           <div class="topbar-actions">
             <button id="refresh" class="icon" type="button" title="Refresh" aria-label="Refresh">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
@@ -48,6 +48,10 @@
                 <button type="button" data-export="md" class="export-row">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                   Markdown
+                </button>
+                <button type="button" data-action="copy-md" class="export-row">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy Markdown
                 </button>
                 <button type="button" data-export="json" class="export-row">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
