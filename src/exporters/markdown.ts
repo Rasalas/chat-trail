@@ -7,8 +7,6 @@ export function exportMarkdown(conversation: ConversationExport): string {
   const lines: string[] = [
     ...frontmatter(conversation),
     `# ${conversation.source.title || "Chat Export"}`,
-    "",
-    ...headerQuote(conversation),
     ""
   ];
 
@@ -96,10 +94,6 @@ function frontmatter(conversation: ConversationExport): string[] {
   ].filter(([, value]) => value != null && value !== "");
 
   return ["---", ...fields.map(([key, value]) => `${key}: ${JSON.stringify(String(value))}`), "---", ""];
-}
-
-function headerQuote(conversation: ConversationExport): string[] {
-  return [`> ${conversation.source.url || "(no URL captured)"}`];
 }
 
 function renderMessageBody(message: ConversationExport["messages"][number]): string {

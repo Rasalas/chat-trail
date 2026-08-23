@@ -3,12 +3,13 @@ import { exportMarkdown } from "./markdown";
 import { makeConversation, makeMessage } from "../testing/fixtures";
 
 describe("exportMarkdown", () => {
-  it("renders frontmatter and title quote", () => {
+  it("renders frontmatter and title", () => {
     const markdown = exportMarkdown(makeConversation([]));
     expect(markdown).toContain('provider: "generic"');
     expect(markdown).toContain('title: "Test Chat"');
+    expect(markdown).toContain('url: "https://example.com/chat?ref=x"');
     expect(markdown).toContain("# Test Chat");
-    expect(markdown).toContain("> https://example.com/chat?ref=x");
+    expect(markdown).not.toMatch(/^> https:/m);
   });
 
   it("quotes user messages and leaves assistant answers plain", () => {
