@@ -17,54 +17,78 @@ import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const messagesRoot = document.querySelector<HTMLElement>("#messages")!;
 const refreshButton = document.querySelector<HTMLButtonElement>("#refresh")!;
-const markdownButton = document.querySelector<HTMLButtonElement>("#export-md")!;
-const jsonButton = document.querySelector<HTMLButtonElement>("#export-json")!;
-const htmlButton = document.querySelector<HTMLButtonElement>("#export-html")!;
-const printButton = document.querySelector<HTMLButtonElement>("#print-pdf")!;
-const zipButton = document.querySelector<HTMLButtonElement>("#export-zip")!;
 const selectAllButton = document.querySelector<HTMLButtonElement>("#select-all")!;
 const selectNoneButton = document.querySelector<HTMLButtonElement>("#select-none")!;
 const redactButton = document.querySelector<HTMLButtonElement>("#redact-now")!;
 const clipboardButton = document.querySelector<HTMLButtonElement>("#clipboard-import")!;
 const clipboardNote = document.querySelector<HTMLElement>("#clipboard-note")!;
 const optionInputs = [...document.querySelectorAll<HTMLInputElement>("[data-option]")];
+const exportButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-export]")];
 const actionButtons = [
   refreshButton,
-  markdownButton,
-  jsonButton,
-  htmlButton,
-  printButton,
-  zipButton,
+  clipboardButton,
+  redactButton,
   selectAllButton,
   selectNoneButton,
-  redactButton,
-  clipboardButton
+  ...exportButtons
 ];
 
 let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
 let editingId: string | null = null;
+const OPTIONS_STORAGE_KEY = "exportOptions";
 
 refreshButton.addEventListener("click", () => void loadConversation(false));
-markdownButton.addEventListener("click", () => void exportCurrent("md"));
-jsonButton.addEventListener("click", () => void exportCurrent("json"));
-htmlButton.addEventListener("click", () => void exportCurrent("html"));
-printButton.addEventListener("click", () => void exportCurrent("print"));
-zipButton.addEventListener("click", () => void exportCurrent("zip"));
+exportButtons.forEach((button) =>
+  button.addEventListener("click", () => {
+    closePopovers();
+    void exportCurrent(button.dataset.export as "md" | "json" | "html" | "print" | "zip");
+  })
+);
 selectAllButton.addEventListener("click", () => selectMessages("all"));
 selectNoneButton.addEventListener("click", () => selectMessages("none"));
 redactButton.addEventListener("click", redactVisibleText);
 clipboardButton.addEventListener("click", () => void importClipboard());
-optionInputs.forEach((input) => input.addEventListener("change", render));
+optionInputs.forEach((input) =>
+  input.addEventListener("change", () => {
+    persistOptions();
+    render();
+  })
+);
 optionInputs
   .find((input) => input.dataset.option === "useProviderCopy")
   ?.addEventListener("change", () => {
     syncClipboardNote();
     void loadConversation(false);
   });
+document.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  document.querySelectorAll("details.popover[open]").forEach((popover) => {
+    if (!popover.contains(target)) popover.removeAttribute("open");
+  });
+});
 
 syncClipboardNote();
-void loadConversation(true);
+void restoreOptions().then(() => loadConversation(true));
+
+function closePopovers(): void {
+  document.querySelectorAll("details.popover[open]").forEach((popover) => popover.removeAttribute("open"));
+}
+
+async function restoreOptions(): Promise<void> {
+  const stored = await chrome.storage.sync.get(OPTIONS_STORAGE_KEY);
+  const saved = stored[OPTIONS_STORAGE_KEY] as Partial<ExportOptions> | undefined;
+  if (!saved) return;
+  for (const input of optionInputs) {
+    const key = input.dataset.option as keyof ExportOptions;
+    if (key in saved) input.checked = Boolean(saved[key]);
+  }
+  syncClipboardNote();
+}
+
+function persistOptions(): void {
+  void chrome.storage.sync.set({ [OPTIONS_STORAGE_KEY]: readOptions() });
+}
 
 function syncClipboardNote(): void {
   const useProviderCopy = optionInputs.find((input) => input.dataset.option === "useProviderCopy");
@@ -151,9 +175,10 @@ function messageNode(message: ChatMessage): HTMLElement {
   const edit = document.createElement("button");
   edit.type = "button";
   edit.className = "message-edit";
-  edit.textContent = "✎";
   edit.title = "Edit (markdown)";
   edit.setAttribute("aria-label", "Edit message");
+  edit.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>';
   edit.addEventListener("click", () => {
     editingId = message.id;
     render();
@@ -162,9 +187,10 @@ function messageNode(message: ChatMessage): HTMLElement {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "message-remove";
-  remove.textContent = "✕";
   remove.title = "Remove from export";
   remove.setAttribute("aria-label", "Remove from export");
+  remove.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></svg>';
   remove.addEventListener("click", () => {
     selectedIds.delete(message.id);
     render();
@@ -218,7 +244,7 @@ function editorNode(message: ChatMessage): HTMLElement {
 
   const hint = document.createElement("span");
   hint.className = "editor-hint";
-  hint.textContent = "markdown · ⌘↩ save · esc cancel";
+  hint.textContent = "markdown · ctrl/cmd+enter save · esc cancel";
 
   bar.append(save, cancel, hint);
   wrap.append(textarea, bar);

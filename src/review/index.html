@@ -12,40 +12,72 @@
           <h1>Review</h1>
           <p id="summary" class="summary">Waiting for the active tab.</p>
         </div>
-        <div class="export-actions">
-          <button id="refresh" type="button">Refresh</button>
-          <button id="export-md" type="button">Markdown</button>
-          <button id="export-json" type="button">JSON</button>
-          <button id="export-html" type="button">HTML</button>
-          <button id="print-pdf" type="button">Print/PDF</button>
-          <button id="export-zip" class="primary" type="button">Evidence ZIP</button>
+        <div class="topbar-actions">
+          <button id="clipboard-import" class="icon" type="button" title="Import from clipboard" aria-label="Import from clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+          </button>
+          <button id="refresh" class="icon" type="button" title="Refresh" aria-label="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+          </button>
+
+          <details class="popover" id="settings-popover">
+            <summary class="icon" title="Settings" aria-label="Settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            </summary>
+            <div class="popover-panel">
+              <h3>Extraction</h3>
+              <label><input type="checkbox" data-option="useProviderCopy" /> Provider copy buttons</label>
+              <p id="clipboard-note" class="option-note clipboard-note" hidden>
+                Enabled: extraction will click each assistant copy button and briefly read your
+                clipboard, then restore its previous content. DOM extraction remains the default.
+              </p>
+              <h3>Messages</h3>
+              <div class="popover-row">
+                <button id="select-all" type="button">Show all</button>
+                <button id="select-none" type="button">Remove all</button>
+              </div>
+              <button id="redact-now" type="button">Redact visible text</button>
+            </div>
+          </details>
+
+          <details class="popover" id="export-popover">
+            <summary class="icon primary" title="Export" aria-label="Export">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </summary>
+            <div class="popover-panel">
+              <h3>Export as</h3>
+              <button type="button" data-export="md" class="export-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Markdown
+              </button>
+              <button type="button" data-export="json" class="export-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+                JSON
+              </button>
+              <button type="button" data-export="html" class="export-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                HTML
+              </button>
+              <button type="button" data-export="print" class="export-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print / PDF
+              </button>
+              <button type="button" data-export="zip" class="export-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                Evidence ZIP
+              </button>
+              <h3>Options</h3>
+              <label><input type="checkbox" data-option="collapseIntermediate" checked /> Interim replies</label>
+              <label><input type="checkbox" data-option="includeImages" checked /> Images</label>
+              <label><input type="checkbox" data-option="includeMetadata" checked /> Metadata</label>
+              <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
+              <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
+            </div>
+          </details>
         </div>
       </header>
 
-      <section class="workspace">
-        <aside class="options" aria-label="Export options">
-          <label title="Extra assistant segments within one answer are kept collapsed as “previous messages”. Uncheck to remove them entirely.">
-            <input type="checkbox" data-option="collapseIntermediate" checked /> Interim replies
-          </label>
-          <label><input type="checkbox" data-option="includeImages" checked /> Images</label>
-          <label><input type="checkbox" data-option="includeMetadata" checked /> Metadata</label>
-          <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
-          <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
-          <label><input type="checkbox" data-option="useProviderCopy" /> Provider copy buttons</label>
-          <p id="clipboard-note" class="option-note clipboard-note" hidden>
-            Enabled: extraction will click each assistant copy button and briefly read your
-            clipboard, then restore its previous content. DOM extraction remains the default.
-          </p>
-          <div class="option-buttons">
-            <button id="select-all" type="button">Show all</button>
-            <button id="select-none" type="button">Remove all</button>
-            <button id="redact-now" type="button">Redact</button>
-            <button id="clipboard-import" type="button">Clipboard</button>
-          </div>
-        </aside>
-
-        <section class="messages" id="messages" aria-live="polite"></section>
-      </section>
+      <section class="messages" id="messages" aria-live="polite"></section>
     </main>
     <script type="module" src="./index.ts"></script>
   </body>

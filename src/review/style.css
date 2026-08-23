@@ -110,48 +110,132 @@ h1 {
   white-space: nowrap;
 }
 
-.export-actions {
+.topbar-actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: 6px;
 }
 
-.workspace {
+button.icon,
+summary.icon {
+  min-height: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-  margin-top: 16px;
+  place-items: center;
+  list-style: none;
 }
 
-.options {
-  position: sticky;
-  top: 16px;
+summary.icon::-webkit-details-marker {
+  display: none;
+}
+
+button.icon svg,
+summary.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+summary.icon {
+  cursor: pointer;
+  user-select: none;
+}
+
+details.popover {
+  position: relative;
+}
+
+details.popover[open] > summary.icon,
+details.popover[open] > summary.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+details.popover > summary.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+details.popover[open] > summary.primary {
+  color: var(--accent-fg);
+}
+
+.popover-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  min-width: 250px;
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 7px;
+  padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface);
-  font-size: 13.5px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
 }
 
-.options label {
+.popover-panel h3 {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.popover-panel label {
   display: grid;
   grid-template-columns: 16px 1fr;
   gap: 8px;
   align-items: center;
+  font-size: 13.5px;
   cursor: pointer;
 }
 
-.options input {
+.popover-panel input {
   margin: 0;
   accent-color: var(--accent);
 }
 
+.popover-row {
+  display: flex;
+  gap: 6px;
+}
+
+.popover-row button,
+.popover-panel > button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.export-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.export-row:hover {
+  background: var(--hover-veil);
+}
+
+.export-row svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
 .option-note {
-  grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
@@ -162,25 +246,12 @@ h1 {
   display: none;
 }
 
-.option-buttons {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.option-buttons button {
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 12.5px;
-}
-
 .messages {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
+  max-width: 860px;
+  margin: 18px auto 0;
 }
 
 .message-row {
@@ -238,12 +309,17 @@ h1 {
   width: 24px;
   height: 24px;
   padding: 0;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1;
+}
+
+.message-actions button svg {
+  width: 13px;
+  height: 13px;
 }
 
 .message-actions button:hover {
@@ -442,16 +518,8 @@ h1 {
     flex-direction: column;
   }
 
-  .export-actions {
-    justify-content: flex-start;
-  }
-
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .options {
-    position: static;
+  .topbar-actions {
+    align-self: flex-end;
   }
 
   .message-body {
