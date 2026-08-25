@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chat Trail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Export AI chat conversations locally as Markdown, JSON, HTML, or an evidence ZIP.",
   "icons": {
     "16": "icons/icon-16.png",
