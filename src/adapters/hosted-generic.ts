@@ -22,6 +22,8 @@ interface HostedProvider {
   modelPattern?: RegExp;
   messages?: HostedMessageSelector[];
   thoughtsSelectors?: string[];
+  /** Stable per-message id from the provider DOM; used to dedupe/merge scroll snapshots. */
+  messageId?: (element: Element, role: "user" | "assistant") => string | undefined;
 }
 
 const providers: HostedProvider[] = [
@@ -34,7 +36,12 @@ const providers: HostedProvider[] = [
       { selector: "user-query", role: "user" },
       { selector: "model-response", role: "assistant" }
     ],
-    thoughtsSelectors: ["thoughts-panel", "model-thoughts", "[data-test-id='thoughts-panel']"]
+    thoughtsSelectors: ["thoughts-panel", "model-thoughts", "[data-test-id='thoughts-panel']"],
+    // Gemini wraps each prompt/response pair in .conversation-container with a stable id.
+    messageId: (element, role) => {
+      const id = element.closest(".conversation-container")?.id;
+      return id ? `${id}:${role}` : undefined;
+    }
   },
   { id: "perplexity", label: "Perplexity", hosts: [/(^|\.)perplexity\.ai$/], modelPattern: /sonar|perplexity|gpt|claude/i },
   { id: "copilot", label: "Copilot", hosts: [/(^|\.)copilot\.microsoft\.com$/, /(^|\.)bing\.com$/], modelPattern: /copilot|gpt/i },
@@ -64,18 +71,10 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
     const messages: ChatMessage[] = [];
 
     if (provider.messages) {
-      const tagged = provider.messages.flatMap(({ selector, role }) =>
-        [...document.querySelectorAll(selector)].map((element) => ({ element, role }))
-      );
-      const seen = new Set<Element>();
-      tagged.sort((a, b) => {
-        if (a.element === b.element) return 0;
-        return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-      });
+      const tagged = taggedMessages(document, provider.messages);
 
       for (const [index, { element, role }] of tagged.entries()) {
-        if (seen.has(element)) continue;
-        seen.add(element);
+        const providerMessageId = provider.messageId?.(element, role);
 
         if (role === "assistant" && provider.thoughtsSelectors) {
           const thoughts = collectThoughts(element, provider.thoughtsSelectors);
@@ -84,7 +83,7 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
               id: stableId(`${provider.id}-thoughts`, thoughts.join("\n")),
               role: "assistant",
               content: [{ type: "text", text: thoughts.join("\n") }],
-              metadata: { index, selector: provider.thoughtsSelectors.join(", "), kind: "activity" }
+              metadata: { index, selector: provider.thoughtsSelectors.join(", "), kind: "activity", providerMessageId }
             });
           }
         }
@@ -92,6 +91,7 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
         const message = await elementToMessage(element, role, index, selectorFor(element));
         if (!message) continue;
         if (role === "assistant") message.metadata.model = model;
+        message.metadata.providerMessageId = providerMessageId;
         messages.push(message);
       }
     } else {
@@ -116,8 +116,24 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
 
     conversation.messages = messages;
     return conversation;
+  },
+  messageElements(document) {
+    if (!provider.messages) return [];
+    return taggedMessages(document, provider.messages).map(({ element }) => element);
   }
 }));
+
+function taggedMessages(document: Document, selectors: HostedMessageSelector[]) {
+  const seen = new Set<Element>();
+  const tagged = selectors
+    .flatMap(({ selector, role }) => [...document.querySelectorAll(selector)].map((element) => ({ element, role })))
+    .filter(({ element }) => (seen.has(element) ? false : (seen.add(element), true)));
+
+  return tagged.sort((a, b) => {
+    if (a.element === b.element) return 0;
+    return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+  });
+}
 
 function collectThoughts(element: Element, selectors: string[]): string[] {
   const lines: string[] = [];

@@ -56,4 +56,33 @@ describe("gemini hosted adapter", () => {
   it("matches the gemini host", () => {
     expect(geminiAdapter.matches(new URL("https://gemini.google.com/app/abc"), window.document as unknown as Document)).toBe(true);
   });
+
+  it("gives gemini messages stable ids from their conversation container and exposes message elements", async () => {
+    document.body.innerHTML = `
+      <infinite-scroller class="chat-history">
+        <div class="conversation-container" id="a56f817d6155b853">
+          <user-query><div class="query-text">Frage eins</div></user-query>
+          <model-response><message-content id="message-content-id-r_a56f817d6155b853"><p>Antwort eins</p></message-content></model-response>
+        </div>
+        <div class="conversation-container" id="e64647bbbcd34557">
+          <user-query><div class="query-text">Frage zwei</div></user-query>
+          <model-response><message-content><p>Antwort zwei</p></message-content></model-response>
+        </div>
+      </infinite-scroller>`;
+
+    const gemini = hostedGenericAdapters.find((adapter) => adapter.id === "gemini")!;
+    const conversation = await gemini.extract(document);
+    expect(conversation.messages.map((m) => m.metadata.providerMessageId)).toEqual([
+      "a56f817d6155b853:user",
+      "a56f817d6155b853:assistant",
+      "e64647bbbcd34557:user",
+      "e64647bbbcd34557:assistant"
+    ]);
+    expect(gemini.messageElements?.(document).map((el) => el.tagName)).toEqual([
+      "USER-QUERY",
+      "MODEL-RESPONSE",
+      "USER-QUERY",
+      "MODEL-RESPONSE"
+    ]);
+  });
 });

@@ -35,6 +35,7 @@ export interface ChatMessage {
     selector?: string;
     index?: number;
     visibleTextHash?: string;
+    providerMessageId?: string;
     extractionMethod?: "dom" | "provider-copy";
     kind?: "activity" | "document";
   };
@@ -79,6 +80,8 @@ export interface ChatAdapter {
   matches(url: URL, document: Document): boolean;
   extract(document: Document): Promise<ConversationExport>;
   capabilities: AdapterCapabilities;
+  /** Rendered message roots, in document order. Drives scroller detection and change tracking during scroll capture. */
+  messageElements?(document: Document): Element[];
 }
 
 export interface ExportOptions {

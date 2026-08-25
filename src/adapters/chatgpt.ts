@@ -30,8 +30,8 @@ export const chatGptAdapter: ChatAdapter = {
 
     if (useTurns) {
       for (const [index, turn] of turns.entries()) {
-        const inner = turn.querySelector("[data-message-author-role]");
-        const explicitRole = inner?.getAttribute("data-message-author-role");
+        const inners = [...turn.querySelectorAll("[data-message-author-role]")];
+        const explicitRole = inners[0]?.getAttribute("data-message-author-role");
         const role =
           explicitRole === "user" || explicitRole === "assistant" ? explicitRole : roleFromTurn(turn, index);
 
@@ -45,16 +45,20 @@ export const chatGptAdapter: ChatAdapter = {
               metadata: {
                 index,
                 selector: "[data-testid='cot-v5-tool-icon-pile'], button[aria-expanded]",
-                kind: "activity"
+                kind: "activity",
+                providerMessageId: inners[0]?.getAttribute("data-message-id") ?? undefined
               }
             });
           }
         }
 
-        const messageRoot = inner ?? turn.querySelector(".markdown, [data-testid='message-content']") ?? turn;
-        const message = await elementToMessage(messageRoot, role, index, selectorFor(turn));
-        if (message) {
+        // A turn can hold several message nodes (e.g. multi-part assistant replies); keep all of them.
+        const roots = inners.length > 0 ? inners : [turn.querySelector(".markdown, [data-testid='message-content']") ?? turn];
+        for (const messageRoot of roots) {
+          const message = await elementToMessage(messageRoot, role, index, selectorFor(turn));
+          if (!message) continue;
           message.metadata.model = role === "assistant" ? model : undefined;
+          message.metadata.providerMessageId = messageRoot.getAttribute("data-message-id") ?? undefined;
           messages.push(await enhanceMessageWithProviderCopy(message, turn));
         }
       }
@@ -68,6 +72,7 @@ export const chatGptAdapter: ChatAdapter = {
         const message = await elementToMessage(messageRoot, role, index, selectorFor(element));
         if (message) {
           message.metadata.model = role === "assistant" ? model : undefined;
+          message.metadata.providerMessageId = element.getAttribute("data-message-id") ?? undefined;
           messages.push(await enhanceMessageWithProviderCopy(message, element));
         }
       }
@@ -75,6 +80,9 @@ export const chatGptAdapter: ChatAdapter = {
 
     conversation.messages = messages;
     return conversation;
+  },
+  messageElements(document) {
+    return [...document.querySelectorAll("[data-message-author-role]")];
   }
 };
 

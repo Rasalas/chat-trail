@@ -33,4 +33,22 @@ describe("chatgpt adapter activity capture", () => {
     expect(answers).toHaveLength(1);
     expect(answers[0].content[0]).toMatchObject({ type: "text", text: "Hier ist deine Reise." });
   });
+
+  it("keeps every message node of a multi-part turn and records provider message ids", async () => {
+    document.body.innerHTML = `
+      <main>
+        <section data-testid="conversation-turn-1" data-turn="user">
+          <div data-message-author-role="user" data-message-id="u1"><div class="whitespace-pre-wrap">Frage</div></div>
+        </section>
+        <section data-testid="conversation-turn-2" data-turn="assistant">
+          <div data-message-author-role="assistant" data-message-id="a1"><div class="markdown"><p>Kurz.</p></div></div>
+          <div data-message-author-role="assistant" data-message-id="a2"><div class="markdown"><p>Ausführliche Antwort.</p></div></div>
+        </section>
+      </main>`;
+
+    const conversation = await chatGptAdapter.extract(document);
+    expect(conversation.messages.map((m) => m.metadata.providerMessageId)).toEqual(["u1", "a1", "a2"]);
+    expect(conversation.messages[2].content[0]).toMatchObject({ type: "text", text: "Ausführliche Antwort." });
+    expect(chatGptAdapter.messageElements?.(document)).toHaveLength(3);
+  });
 });

@@ -9,7 +9,8 @@
     "dev": "sh -c 'vite build --watch & vite build --watch --config vite.content.config.ts & wait'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "probe:build": "esbuild scripts/verify-scroll.ts --bundle --format=iife --outfile=dist/verify-scroll.js"
   },
   "keywords": [
     "browser-extension",

@@ -31,6 +31,8 @@ export const claudeAdapter: ChatAdapter = {
         const role: ChatMessage["role"] =
           perfRole === "human" ? "user" : perfRole === "assistant" ? "assistant" : inferClaudeRole(row, index);
 
+        // Virtualised transcript: data-index is the row's stable position in the conversation.
+        const providerMessageId = row.getAttribute("data-index") ?? row.getAttribute("data-rs-index") ?? undefined;
         const activity: string[] = [];
         const body = prepareBody(row, activity);
         const root = body.querySelector("[data-testid='user-message'], .font-claude-response") ?? body;
@@ -47,13 +49,14 @@ export const claudeAdapter: ChatAdapter = {
               id: stableId("claude-activity", activity.join("\n")),
               role: "assistant",
               content: [{ type: "text", text: activity.join("\n") }],
-              metadata: { index, selector: "[data-testid='tool-status-pill']", kind: "activity" }
+              metadata: { index, selector: "[data-testid='tool-status-pill']", kind: "activity", providerMessageId }
             });
           }
           if (!split.cleaned.content.length) continue;
         }
 
         message.metadata.model = role === "assistant" ? model : undefined;
+        message.metadata.providerMessageId = providerMessageId;
         messages.push(await enhanceMessageWithProviderCopy(message, row));
       }
     } else {
@@ -62,6 +65,9 @@ export const claudeAdapter: ChatAdapter = {
 
     conversation.messages = messages;
     return conversation;
+  },
+  messageElements(document) {
+    return [...document.querySelectorAll("[data-testid='transcript-row']")];
   }
 };
 

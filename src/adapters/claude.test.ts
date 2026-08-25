@@ -69,4 +69,23 @@ describe("splitAssistantActivity", () => {
     expect(answerText).not.toContain("Artefakt");
     expect(answerText).not.toContain("Claude hat geantwortet");
   });
+
+  it("uses the virtualised row index as provider message id and exposes rows as message elements", async () => {
+    document.body.innerHTML = `
+      <div class="overflow-y-auto">
+        <div data-testid="transcript-row" data-index="246" data-perf-row="human">
+          <div data-testid="user-message"><p>Frage</p></div>
+        </div>
+        <div data-testid="transcript-row" data-index="247" data-perf-row="assistant">
+          <div class="font-claude-response"><p>Antwort</p></div>
+        </div>
+      </div>`;
+
+    const conversation = await claudeAdapter.extract(document);
+    expect(conversation.messages.map((m) => [m.role, m.metadata.providerMessageId])).toEqual([
+      ["user", "246"],
+      ["assistant", "247"]
+    ]);
+    expect(claudeAdapter.messageElements?.(document)).toHaveLength(2);
+  });
 });
