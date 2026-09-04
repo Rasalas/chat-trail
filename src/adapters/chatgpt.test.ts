@@ -22,14 +22,14 @@ describe("chatgpt adapter activity capture", () => {
       </main>`;
 
     const conversation = await chatGptAdapter.extract(document);
-    const activity = conversation.messages.filter((message) => message.metadata.kind === "activity");
+    const activity = conversation.messages.filter((message) => message.kind === "activity");
     expect(activity).toHaveLength(1);
     const text = activity[0].content[0].type === "text" ? activity[0].content[0].text : "";
     expect(text).toContain("37s nachgedacht");
     expect(text).toContain("22 Websites durchsucht");
     expect(text).not.toContain("Recherche zu Mikroabenteuern");
 
-    const answers = conversation.messages.filter((message) => message.metadata.kind !== "activity");
+    const answers = conversation.messages.filter((message) => message.kind !== "activity");
     expect(answers).toHaveLength(1);
     expect(answers[0].content[0]).toMatchObject({ type: "text", text: "Hier ist deine Reise." });
   });

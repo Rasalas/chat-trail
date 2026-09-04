@@ -4,8 +4,10 @@ import { exportMarkdown } from "../exporters/markdown";
 import { blobFromText, downloadBlob } from "../shared/download";
 import { getActiveTabId, sendToTabWithContentScript } from "../shared/tabs";
 import { withBusy } from "../shared/ui";
-import { DEFAULT_EXPORT_OPTIONS, RuntimeResponse } from "../shared/types";
+import { DEFAULT_EXPORT_OPTIONS, ContentRequest, ContentResponse } from "../shared/types";
 import { slugify } from "../shared/strings";
+import { openReviewSession } from "../shared/review-session";
+import { captureWarning } from "../shared/capture";
 
 const status = document.querySelector<HTMLParagraphElement>("#status")!;
 const statusDot = document.querySelector<HTMLSpanElement>("#status-dot")!;
@@ -33,7 +35,8 @@ async function quickExport(): Promise<void> {
     const filtered = applyExportOptions(response.conversation, DEFAULT_EXPORT_OPTIONS);
     const markdown = exportMarkdown(filtered);
     downloadBlob(blobFromText(markdown, "text/markdown;charset=utf-8"), `${slugify(filtered.source.title)}.md`);
-    setStatus(`Saved ${filtered.messages.length} messages from ${response.adapterLabel}.`, "ready");
+    const warning = captureWarning(filtered);
+    setStatus(warning ?? `Saved ${filtered.messages.length} messages from ${response.adapterLabel}.`, warning ? "error" : "ready");
   });
 }
 
@@ -43,16 +46,18 @@ async function copyMarkdownToClipboard(): Promise<void> {
     if (!response.ok) throw new Error(response.error);
     const filtered = applyExportOptions(response.conversation, DEFAULT_EXPORT_OPTIONS);
     await navigator.clipboard.writeText(exportMarkdown(filtered));
-    setStatus("Markdown copied to clipboard.", "ready");
+    const warning = captureWarning(filtered);
+    setStatus(warning ?? "Markdown copied to clipboard.", warning ? "error" : "ready");
   });
 }
 
 async function openReviewPage(): Promise<void> {
-  const tabId = await getActiveTabId();
-  if (tabId) await chrome.storage.session.set({ sourceTabId: tabId });
-  const url = chrome.runtime.getURL("src/review/index.html");
-  await chrome.tabs.create({ url });
-  window.close();
+  await withBusy(buttons, showStatus, "Opening review...", async () => {
+    const tabId = await getActiveTabId();
+    if (tabId == null) throw new Error("No active tab found.");
+    await openReviewSession(tabId);
+    window.close();
+  });
 }
 
 async function selectAndReview(): Promise<void> {
@@ -64,10 +69,9 @@ async function selectAndReview(): Promise<void> {
   });
 }
 
-async function sendToActiveTab(message: object): Promise<RuntimeResponse> {
+async function sendToActiveTab<Request extends ContentRequest>(message: Request): Promise<ContentResponse<Request>> {
   const tabId = await getActiveTabId();
   if (!tabId) throw new Error("No active tab found.");
-  await chrome.storage.session.set({ sourceTabId: tabId });
   return sendToTabWithContentScript(tabId, message);
 }
 

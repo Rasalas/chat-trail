@@ -4,11 +4,13 @@ import { exportJson } from "./json";
 import { exportMarkdown } from "./markdown";
 import { createZip, ZipInput } from "./zip";
 import { sha256Hex } from "../shared/hash";
+import { sanitizeContentHtml } from "../shared/sanitize";
 
 export interface EvidenceInputs {
   conversation: ConversationExport;
   htmlSnapshot?: string;
   screenshotDataUrl?: string;
+  includeOriginalPage?: boolean;
   browser?: string;
   platform?: string;
 }
@@ -30,12 +32,13 @@ export async function createEvidencePack(input: EvidenceInputs): Promise<Blob> {
   hashes["conversation.json"] = await sha256Hex(json);
   hashes["transcript.html"] = await sha256Hex(html);
 
-  if (input.htmlSnapshot) {
-    files.push({ name: "snapshot.html", data: input.htmlSnapshot });
-    hashes["snapshot.html"] = await sha256Hex(input.htmlSnapshot);
+  if (input.includeOriginalPage && input.htmlSnapshot) {
+    const snapshot = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; base-uri 'none'; form-action 'none'"></head><body>${sanitizeContentHtml(input.htmlSnapshot)}</body></html>`;
+    files.push({ name: "snapshot.html", data: snapshot });
+    hashes["snapshot.html"] = await sha256Hex(snapshot);
   }
 
-  if (input.screenshotDataUrl) {
+  if (input.includeOriginalPage && input.screenshotDataUrl) {
     const bytes = dataUrlToBytes(input.screenshotDataUrl);
     files.push({ name: "visible-screenshot.png", data: bytes });
     hashes["visible-screenshot.png"] = await sha256Hex(bytes);
@@ -43,6 +46,9 @@ export async function createEvidencePack(input: EvidenceInputs): Promise<Blob> {
 
   const manifest = {
     schema_version: conversation.schema_version,
+    capture: conversation.capture,
+    original_page_included: Boolean(input.includeOriginalPage && (input.htmlSnapshot || input.screenshotDataUrl)),
+    original_page_warning: input.includeOriginalPage ? "Original page evidence is unredacted and is not affected by transcript selection or edits." : undefined,
     source: conversation.source,
     extension_version: conversation.manifest.extension_version,
     artifacts: conversation.artifacts,

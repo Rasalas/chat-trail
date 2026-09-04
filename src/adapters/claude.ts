@@ -48,8 +48,9 @@ export const claudeAdapter: ChatAdapter = {
             messages.push({
               id: stableId("claude-activity", activity.join("\n")),
               role: "assistant",
+              kind: "activity",
               content: [{ type: "text", text: activity.join("\n") }],
-              metadata: { index, selector: "[data-testid='tool-status-pill']", kind: "activity", providerMessageId }
+              metadata: { index, selector: "[data-testid='tool-status-pill']", providerMessageId }
             });
           }
           if (!split.cleaned.content.length) continue;
@@ -101,8 +102,9 @@ async function extractLegacy(
         messages.push({
           id: stableId("claude-activity", split.activity.join("\n")),
           role: "assistant",
+          kind: "activity",
           content: [{ type: "text", text: split.activity.join("\n") }],
-          metadata: { index, selector: "activity", kind: "activity" }
+          metadata: { index, selector: "activity" }
         });
       }
       if (!split.cleaned.content.length) continue;

@@ -9,10 +9,18 @@ import { redactText } from "../shared/redaction";
 import { escapeHtml } from "../shared/strings";
 import { slugify } from "../shared/strings";
 import { sha256Hex, stableId } from "../shared/hash";
-import { readableTabError, getActiveTabId, sendToTabWithContentScript } from "../shared/tabs";
+import { sendToTabWithContentScript } from "../shared/tabs";
 import { withBusy } from "../shared/ui";
 import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
 import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
+import { sanitizeContentHtml } from "../shared/sanitize";
+import { captureWarning } from "../shared/capture";
+import { readReviewSession } from "../shared/review-session";
+import { captureOriginalEvidence } from "./original-evidence";
+
+const reviewSessionId = new URL(document.location.href).searchParams.get("session");
+const originalPageInput = document.querySelector<HTMLInputElement>("#include-original-page")!;
+const captureNotice = document.querySelector<HTMLElement>("#capture-notice")!;
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const chatTitle = document.querySelector<HTMLElement>("#chat-title")!;
@@ -114,34 +122,29 @@ async function loadConversation(preferManualSelection: boolean): Promise<void> {
     ? "Reading current tab... (copy buttons are clicked; the clipboard is read and restored)"
     : "Reading current tab...";
   await withBusy(actionButtons, showSummary, label, async () => {
-    const stored = preferManualSelection
-      ? await chrome.storage.session.get(["manualSelection", "manualSelectionPending", "manualSelectionError"])
-      : {};
-    const storedResponse = stored.manualSelection as RuntimeResponse | undefined;
-    const response = storedResponse?.ok
-      ? storedResponse
-      : preferManualSelection && stored.manualSelectionPending?.state === "extracting"
-        ? await waitForManualSelection()
-        : stored.manualSelectionError
-          ? (() => {
-              throw new Error(String(stored.manualSelectionError));
-            })()
-      : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: options.useProviderCopy });
+    const session = await readReviewSession(reviewSessionId);
+    const response = preferManualSelection && session.state === "extracting"
+      ? await waitForManualSelection()
+      : preferManualSelection && session.state === "failed"
+        ? (() => { throw new Error(session.error); })()
+        : preferManualSelection && session.response
+          ? session.response
+          : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: options.useProviderCopy });
     if (!response.ok) throw new Error(response.error);
     conversation = response.conversation;
     selectedIds.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
-    await chrome.storage.session.remove(["manualSelection", "manualSelectionPending", "manualSelectionError"]);
+    editingId = null;
+    originalPageInput.checked = false;
     render();
   });
 }
 
 async function waitForManualSelection(): Promise<RuntimeResponse> {
   for (let attempt = 0; attempt < 150; attempt += 1) {
-    const stored = await chrome.storage.session.get(["manualSelection", "manualSelectionError"]);
-    const response = stored.manualSelection as RuntimeResponse | undefined;
-    if (response?.ok) return response;
-    if (stored.manualSelectionError) throw new Error(String(stored.manualSelectionError));
+    const session = await readReviewSession(reviewSessionId);
+    if (session.response) return session.response;
+    if (session.state === "failed") throw new Error(session.error);
     await new Promise((resolve) => window.setTimeout(resolve, 100));
   }
   throw new Error("Container extraction timed out.");
@@ -153,6 +156,10 @@ function render(): void {
     return;
   }
 
+  const warning = captureWarning(conversation);
+  captureNotice.textContent = warning ?? "";
+  captureNotice.hidden = !warning;
+  originalPageInput.disabled = conversation.source.provider === "clipboard";
   const options = readOptions();
   const preview = applyExportOptions(pickSelectedMessages(), options);
   chatTitle.textContent = conversation.source.title || "Chat Export";
@@ -167,7 +174,7 @@ function render(): void {
 }
 
 function metaLine(conversation: ConversationExport, count: number): string {
-  const unit = conversation.messages.length > 0 && conversation.messages.every((message) => message.metadata.kind === "document")
+  const unit = conversation.messages.length > 0 && conversation.messages.every((message) => message.kind === "document")
     ? "sections"
     : "messages";
   const parts = [
@@ -183,13 +190,13 @@ function metaLine(conversation: ConversationExport, count: number): string {
 function messageNode(message: ChatMessage): HTMLElement {
   const included = selectedIds.has(message.id);
   const row = document.createElement("div");
-  row.className = `message-row ${message.role} ${message.metadata.kind ?? ""} ${included ? "included" : "removed"}`;
+  row.className = `message-row ${message.role} ${message.kind ?? ""} ${included ? "included" : "removed"}`;
 
   if (!included) {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "message-restore";
-    restore.textContent = message.metadata.kind === "document"
+    restore.textContent = message.kind === "document"
       ? "Document section removed — click to restore"
       : `${message.role} message removed — click to restore`;
     restore.title = "Include again";
@@ -208,7 +215,7 @@ function messageNode(message: ChatMessage): HTMLElement {
 
   const body = document.createElement("div");
   body.className = "message-body";
-  body.innerHTML = messageHtml(message);
+  body.innerHTML = sanitizeContentHtml(messageHtml(message));
   body.querySelectorAll("img").forEach((img) => {
     img.addEventListener("error", () => {
       const fallback = document.createElement("span");
@@ -364,11 +371,16 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
     } else if (format === "print") {
       openPrintView(exportHtml(prepared));
     } else {
-      const [snapshot, screenshot] = await Promise.all([getHtmlSnapshot(), captureScreenshot()]);
+      const includeOriginalPage = originalPageInput.checked && prepared.source.provider !== "clipboard";
+      originalPageInput.checked = false;
+      const original = includeOriginalPage
+        ? await captureOriginalEvidence(await getSourceTabId(), conversation!.source.url)
+        : {};
+
       const zip = await createEvidencePack({
         conversation: prepared,
-        htmlSnapshot: snapshot,
-        screenshotDataUrl: screenshot,
+        ...original,
+        includeOriginalPage,
         browser: navigator.userAgent,
         platform: (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
       });
@@ -411,6 +423,8 @@ async function importClipboard(): Promise<void> {
     const text = await navigator.clipboard.readText();
     if (!text.trim()) throw new Error("Clipboard is empty.");
     conversation = await conversationFromClipboard(text);
+    editingId = null;
+    originalPageInput.checked = false;
     selectedIds.clear();
     conversation.messages.forEach((message) => selectedIds.add(message.id));
     render();
@@ -467,7 +481,7 @@ async function conversationFromClipboard(text: string): Promise<ConversationExpo
     const role = inferClipboardRole(chunk.role, index);
     const body = chunk.text.trim();
     messages.push({
-      id: stableId(role, body),
+      id: `${role}-${index}-${stableId(role, body)}`,
       role,
       content: [{ type: "text", text: body }],
       metadata: {
@@ -521,42 +535,14 @@ function inferClipboardRole(role: string | undefined, index: number): ChatMessag
   return index % 2 === 0 ? "user" : "assistant";
 }
 
-async function sendToActiveTab(message: object): Promise<RuntimeResponse> {
+async function sendToActiveTab(message: { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }): Promise<RuntimeResponse> {
   const tabId = await getSourceTabId();
   if (!tabId) throw new Error("No source tab found. Open the chat tab, then open Chat Trail again.");
   return sendToTabWithContentScript(tabId, message);
 }
 
-async function getHtmlSnapshot(): Promise<string | undefined> {
-  try {
-    const tabId = await getSourceTabId();
-    if (!tabId) return undefined;
-    const response = (await sendToTabWithContentScript(tabId, { type: "GET_HTML_SNAPSHOT" })) as { ok: true; html: string } | { ok: false };
-    return response.ok ? response.html : undefined;
-  } catch (error) {
-    console.warn(readableTabError(error).message);
-    return undefined;
-  }
-}
-
-async function captureScreenshot(): Promise<string | undefined> {
-  try {
-    const tabId = await getSourceTabId();
-    if (!tabId) return undefined;
-    const tab = await chrome.tabs.get(tabId);
-    await chrome.tabs.update(tabId, { active: true });
-    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
-    return await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-  } catch {
-    return undefined;
-  }
-}
-
-async function getSourceTabId(): Promise<number | undefined> {
-  const stored = await chrome.storage.session.get("sourceTabId");
-  if (typeof stored.sourceTabId === "number") return stored.sourceTabId;
-  return getActiveTabId();
+async function getSourceTabId(): Promise<number> {
+  return (await readReviewSession(reviewSessionId)).sourceTabId;
 }
 
 function showSummary(text: string): void {

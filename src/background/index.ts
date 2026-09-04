@@ -1,9 +1,14 @@
 import { RuntimeResponse } from "../shared/types";
+import { closeReviewSession, finishManualSelection, openReviewSession } from "../shared/review-session";
 
 type BackgroundMessage =
   | { type: "OPEN_REVIEW" }
-  | { type: "COMPLETE_MANUAL_SELECTION"; response: RuntimeResponse }
-  | { type: "FAIL_MANUAL_SELECTION"; error: string };
+  | { type: "COMPLETE_MANUAL_SELECTION"; sessionId: string; response: RuntimeResponse }
+  | { type: "FAIL_MANUAL_SELECTION"; sessionId: string; error: string };
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void closeReviewSession(tabId).catch(console.warn);
+});
 
 chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendResponse) => {
   if (!isBackgroundMessage(message)) return;
@@ -17,28 +22,25 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendRe
 export async function handleBackgroundMessage(
   message: BackgroundMessage,
   sourceTabId: number | undefined
-): Promise<{ ok: true }> {
+): Promise<{ ok: true; sessionId?: string }> {
   if (message.type === "OPEN_REVIEW") {
-    await chrome.storage.session.remove(["manualSelection", "manualSelectionError"]);
-    await chrome.storage.session.set({
-      ...(sourceTabId == null ? {} : { sourceTabId }),
-      manualSelectionPending: { state: "extracting" }
-    });
-    await chrome.tabs.create({ url: chrome.runtime.getURL("src/review/index.html") });
-    return { ok: true };
+    if (sourceTabId == null) throw new Error("No source tab for this selection.");
+    const sessionId = await openReviewSession(sourceTabId, true);
+    return { ok: true, sessionId };
   }
 
   if (message.type === "COMPLETE_MANUAL_SELECTION") {
-    await chrome.storage.session.set({ manualSelection: message.response });
-    await chrome.storage.session.remove(["manualSelectionPending", "manualSelectionError"]);
+    await finishManualSelection(message.sessionId, sourceTabId, message.response);
     return { ok: true };
   }
 
-  await chrome.storage.session.set({ manualSelectionError: message.error });
-  await chrome.storage.session.remove(["manualSelection", "manualSelectionPending"]);
+  await finishManualSelection(message.sessionId, sourceTabId, { ok: false, error: message.error });
   return { ok: true };
 }
 
-function isBackgroundMessage(message: { type?: string }): message is BackgroundMessage {
-  return ["OPEN_REVIEW", "COMPLETE_MANUAL_SELECTION", "FAIL_MANUAL_SELECTION"].includes(message.type ?? "");
+function isBackgroundMessage(message: unknown): message is BackgroundMessage {
+  if (!message || typeof message !== "object" || !("type" in message)) return false;
+  if (message.type === "OPEN_REVIEW") return true;
+  return "sessionId" in message && typeof message.sessionId === "string" &&
+    (message.type === "COMPLETE_MANUAL_SELECTION" || message.type === "FAIL_MANUAL_SELECTION");
 }

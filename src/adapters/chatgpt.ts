@@ -41,11 +41,11 @@ export const chatGptAdapter: ChatAdapter = {
             messages.push({
               id: stableId("assistant-activity", activity.join("\n")),
               role: "assistant",
+              kind: "activity",
               content: [{ type: "text", text: activity.join("\n") }],
               metadata: {
                 index,
                 selector: "[data-testid='cot-v5-tool-icon-pile'], button[aria-expanded]",
-                kind: "activity",
                 providerMessageId: inners[0]?.getAttribute("data-message-id") ?? undefined
               }
             });

@@ -62,9 +62,9 @@ describe("exportMarkdown", () => {
 
   it("renders pure-label activity as an italic line instead of an empty details block", () => {
     const thinking = makeMessage("assistant", 1, [{ type: "text", text: "Dachte 11 s nach" }]);
-    thinking.metadata.kind = "activity";
+    thinking.kind = "activity";
     const tools = makeMessage("assistant", 2, [{ type: "text", text: "Web durchsucht" }]);
-    tools.metadata.kind = "activity";
+    tools.kind = "activity";
     const conversation = makeConversation([
       makeMessage("user", 0, [{ type: "text", text: "q" }]),
       thinking,
@@ -79,7 +79,7 @@ describe("exportMarkdown", () => {
 
   it("keeps a details block when collapsed runs contain real content", () => {
     const thinking = makeMessage("assistant", 1, [{ type: "text", text: "Dachte 18 s nach" }]);
-    thinking.metadata.kind = "activity";
+    thinking.kind = "activity";
     const reasoning = makeMessage("assistant", 2, [{ type: "text", text: "Ausführliche Überlegung" }]);
     const conversation = makeConversation([
       makeMessage("user", 0, [{ type: "text", text: "q" }]),
@@ -103,9 +103,9 @@ describe("exportMarkdown", () => {
 
   it("renders consecutive document sections as flowing Markdown", () => {
     const heading = makeMessage("assistant", 0, [{ type: "text", text: "## Eine Meldung" }]);
-    heading.metadata.kind = "document";
+    heading.kind = "document";
     const paragraph = makeMessage("assistant", 1, [{ type: "text", text: "Der eigentliche Artikeltext." }]);
-    paragraph.metadata.kind = "document";
+    paragraph.kind = "document";
 
     const markdown = exportMarkdown(makeConversation([heading, paragraph]));
 

@@ -1,7 +1,13 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "./markdown";
 
 describe("renderMarkdown", () => {
+  it("sanitizes active HTML inside details while retaining the disclosure", () => {
+    const html = renderMarkdown('<details><summary>Example</summary><img src="x" onerror="alert(1)"><iframe srcdoc="attack"></iframe><script>alert(1)</script></details>');
+    expect(html).toContain("<details><summary>Example</summary>");
+    expect(html).not.toMatch(/onerror|iframe|srcdoc|<script/i);
+  });
   it("escapes html before applying markdown", () => {
     expect(renderMarkdown('<script>alert("x")</script>')).toContain("&lt;script&gt;");
     expect(renderMarkdown('<script>alert("x")</script>')).not.toContain("<script>");

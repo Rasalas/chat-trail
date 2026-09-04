@@ -41,8 +41,9 @@ export async function extractFromContainer(container: Element, document: Documen
     conversation.messages = segments.map((content, index) => ({
       id: stableId("document", `${index}:${contentKey(content)}`),
       role: "assistant",
+      kind: "document",
       content,
-      metadata: { index, selector: selectorFor(container), kind: "document" }
+      metadata: { index, selector: selectorFor(container) }
     }));
     return conversation;
   }

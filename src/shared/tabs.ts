@@ -1,11 +1,11 @@
-import { RuntimeResponse } from "./types";
+import { ContentRequest, ContentResponse } from "./types";
 
 export async function getActiveTabId(): Promise<number | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab?.id;
 }
 
-export async function sendToTabWithContentScript(tabId: number, message: object): Promise<RuntimeResponse> {
+export async function sendToTabWithContentScript<Request extends ContentRequest>(tabId: number, message: Request): Promise<ContentResponse<Request>> {
   try {
     return await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {

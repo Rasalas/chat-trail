@@ -1,14 +1,12 @@
 import { selectAdapter } from "../adapters";
 import { extractFromContainer } from "../adapters/generic";
 import { extractWithScrollCapture } from "./scroll-capture";
-import { RuntimeResponse } from "../shared/types";
+import { ContentRequest, ContentResponse } from "../shared/types";
+import { snapshotDocument } from "./snapshot";
 
-type RuntimeMessage =
-  | { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }
-  | { type: "GET_HTML_SNAPSHOT" }
-  | { type: "START_CONTAINER_SELECTION" };
+let extracting = false;
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: ContentRequest, _sender, sendResponse) => {
   handleMessage(message)
     .then(sendResponse)
     .catch((error: unknown) => {
@@ -18,9 +16,10 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 });
 
 async function handleMessage(
-  message: RuntimeMessage
-): Promise<RuntimeResponse | { ok: true; html: string } | { ok: true; selecting: true }> {
+  message: ContentRequest
+): Promise<ContentResponse<ContentRequest>> {
   if (message.type === "GET_HTML_SNAPSHOT") {
+    if (message.expectedUrl !== document.location.href) throw new Error("The source page has changed. Refresh the review first.");
     return { ok: true, html: snapshotHtml() };
   }
 
@@ -29,23 +28,30 @@ async function handleMessage(
     return { ok: true, selecting: true };
   }
 
-  const adapter = selectAdapter(new URL(document.location.href), document);
-  const conversation = await extractWithScrollCapture(adapter, document, { useProviderCopy: Boolean(message.useProviderCopy) });
-  return {
-    ok: true,
-    conversation,
-    adapterId: adapter.id,
-    adapterLabel: adapter.label
-  };
+  if (message.type !== "EXTRACT_CONVERSATION") throw new Error("Unknown content request.");
+  if (extracting) throw new Error("A capture is already running on this page. Wait for it to finish.");
+  extracting = true;
+  const sourceUrl = document.location.href;
+  try {
+    const adapter = selectAdapter(new URL(sourceUrl), document);
+    const conversation = await extractWithScrollCapture(adapter, document, { useProviderCopy: Boolean(message.useProviderCopy) });
+    if (document.location.href !== sourceUrl) throw new Error("The source page changed during capture. Please try again.");
+    return { ok: true, conversation, adapterId: adapter.id, adapterLabel: adapter.label };
+  } finally {
+    extracting = false;
+  }
 }
 
 async function selectContainerAndOpenReview(): Promise<void> {
+  let sessionId: string | undefined;
   try {
     const container = await pickContainer();
-    await sendBackgroundMessage({ type: "OPEN_REVIEW" });
+    sessionId = (await sendBackgroundMessage({ type: "OPEN_REVIEW" })).sessionId;
+    if (!sessionId) throw new Error("The review session could not be opened.");
     const conversation = await extractFromContainer(container, document);
     await sendBackgroundMessage({
       type: "COMPLETE_MANUAL_SELECTION",
+      sessionId,
       response: {
         ok: true,
         conversation,
@@ -57,7 +63,7 @@ async function selectContainerAndOpenReview(): Promise<void> {
     if (error instanceof Error && error.message === "Container selection cancelled.") return;
     const message = error instanceof Error ? error.message : String(error);
     try {
-      await sendBackgroundMessage({ type: "FAIL_MANUAL_SELECTION", error: message });
+      if (sessionId) await sendBackgroundMessage({ type: "FAIL_MANUAL_SELECTION", sessionId, error: message });
     } catch (notificationError) {
       console.warn("Could not report container selection failure.", notificationError);
     }
@@ -65,17 +71,14 @@ async function selectContainerAndOpenReview(): Promise<void> {
   }
 }
 
-async function sendBackgroundMessage(message: object): Promise<void> {
-  const response = (await chrome.runtime.sendMessage(message)) as { ok?: boolean; error?: string } | undefined;
+async function sendBackgroundMessage(message: object): Promise<{ sessionId?: string }> {
+  const response = (await chrome.runtime.sendMessage(message)) as { ok?: boolean; error?: string; sessionId?: string } | undefined;
   if (!response?.ok) throw new Error(response?.error || "The extension background service did not respond.");
+  return response;
 }
 
 export function snapshotHtml(): string {
-  const clone = document.documentElement.cloneNode(true) as HTMLElement;
-  clone
-    .querySelectorAll("script, noscript, template, link[rel='preload'][as='script']")
-    .forEach((element) => element.remove());
-  return `<!doctype html>\n${clone.outerHTML}`;
+  return snapshotDocument(document);
 }
 
 function pickContainer(): Promise<Element> {

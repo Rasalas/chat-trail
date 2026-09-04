@@ -54,14 +54,14 @@ describe("splitAssistantActivity", () => {
       </div>`;
 
     const conversation = await claudeAdapter.extract(document);
-    const activity = conversation.messages.filter((message) => message.metadata.kind === "activity");
+    const activity = conversation.messages.filter((message) => message.kind === "activity");
     const text = activity
       .map((message) => (message.content[0].type === "text" ? message.content[0].text : ""))
       .join("\n");
     expect(text.split("Artefakt: 19 spec").length - 1).toBe(1);
     expect(text.split("Datei erstellt, datei lesen").length - 1).toBe(1);
 
-    const answers = conversation.messages.filter((message) => message.metadata.kind !== "activity");
+    const answers = conversation.messages.filter((message) => message.kind !== "activity");
     const answerText = answers
       .map((message) => (message.content[0].type === "text" ? message.content[0].text : ""))
       .join("\n");

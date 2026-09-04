@@ -1,5 +1,6 @@
 import { ChatMessage, ConversationExport, ContentBlock } from "../shared/types";
 import { intermediateAssistantFlags } from "./turns";
+import { captureWarning } from "../shared/capture";
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -7,6 +8,7 @@ export function exportMarkdown(conversation: ConversationExport): string {
   const lines: string[] = [
     ...frontmatter(conversation),
     `# ${conversation.source.title || "Chat Export"}`,
+    ...(captureWarning(conversation) ? ["", `> ${captureWarning(conversation)}`] : []),
     ""
   ];
 
@@ -19,7 +21,7 @@ export function exportMarkdown(conversation: ConversationExport): string {
     const labels: string[] = [];
     const others: ChatMessage[] = [];
     collapsed.forEach((message) => {
-      if (message.metadata.kind !== "activity") {
+      if (message.kind !== "activity") {
         others.push(message);
         return;
       }
@@ -48,7 +50,7 @@ export function exportMarkdown(conversation: ConversationExport): string {
 
     lines.push(`<details><summary>${escapeHtml(summary)}</summary>`, "");
     collapsed.forEach((message) => {
-      if (message.metadata.kind === "activity") return;
+      if (message.kind === "activity") return;
       const body = renderMessageBody(message);
       if (body) lines.push(body, "");
     });

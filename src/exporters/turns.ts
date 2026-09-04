@@ -16,7 +16,7 @@ export function intermediateAssistantFlags(messages: ChatMessage[]): boolean[] {
   };
 
   messages.forEach((message, index) => {
-    if (message.role !== "assistant" || message.metadata.kind === "document") {
+    if (message.role !== "assistant" || message.kind === "document") {
       flush();
       return;
     }

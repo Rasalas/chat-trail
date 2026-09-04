@@ -80,6 +80,8 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
                   Evidence ZIP
                 </button>
+                <label><input type="checkbox" id="include-original-page" /> Include original page in ZIP (unredacted)</label>
+                <p class="option-note">Adds a screenshot and page snapshot, including removed messages and text you redacted or edited. Applies to the next ZIP only.</p>
                 <h3>Options</h3>
                 <label><input type="checkbox" data-option="collapseIntermediate" checked /> Interim replies</label>
                 <label><input type="checkbox" data-option="includeImages" checked /> Images</label>
@@ -97,6 +99,7 @@
         </div>
       </header>
 
+      <p id="capture-notice" class="capture-notice" role="alert" hidden></p>
       <section class="messages" id="messages" aria-live="polite"></section>
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>

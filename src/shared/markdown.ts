@@ -1,4 +1,5 @@
 import { ContentBlock } from "./types";
+import { sanitizeContentHtml } from "./sanitize";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
@@ -99,7 +100,7 @@ export function renderMarkdown(source: string): string {
         index += 1;
         if (closing) break;
       }
-      out.push(block.join("\n"));
+      out.push(sanitizeContentHtml(block.join("\n")));
       continue;
     }
 

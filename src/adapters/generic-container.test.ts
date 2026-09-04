@@ -22,7 +22,7 @@ describe("manual generic container extraction", () => {
 
     expect(conversation.messages).toHaveLength(5);
     expect(conversation.messages.every((message) => message.role === "assistant")).toBe(true);
-    expect(conversation.messages.every((message) => message.metadata.kind === "document")).toBe(true);
+    expect(conversation.messages.every((message) => message.kind === "document")).toBe(true);
     expect(conversation.messages.map((message) => message.content[0])).toEqual([
       { type: "text", text: "## Eine Meldung" },
       { type: "text", text: "Der erste Absatz enthält den eigentlichen Artikeltext." },
@@ -44,7 +44,7 @@ describe("manual generic container extraction", () => {
 
     expect(conversation.messages).toHaveLength(2);
     expect(conversation.messages.every((message) => message.role === "assistant")).toBe(true);
-    expect(conversation.messages.every((message) => message.metadata.kind === "document")).toBe(true);
+    expect(conversation.messages.every((message) => message.kind === "document")).toBe(true);
   });
 
   it("keeps explicitly marked user and assistant turns as chat", async () => {
@@ -57,6 +57,6 @@ describe("manual generic container extraction", () => {
     const conversation = await extractFromContainer(document.querySelector("#chat")!, document);
 
     expect(conversation.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
-    expect(conversation.messages.every((message) => message.metadata.kind === undefined)).toBe(true);
+    expect(conversation.messages.every((message) => message.kind === undefined)).toBe(true);
   });
 });

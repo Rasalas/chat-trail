@@ -6,9 +6,11 @@ Local-first Chromium extension for exporting AI-chat-like pages. It uses provide
 
 - ChatGPT, Claude, and generic web-chat extraction
 - Markdown, JSON, and HTML exports
-- Evidence ZIP with transcript files, manifest, hashes, visible screenshot, and HTML snapshot
+- Evidence ZIP with reviewed transcript files, manifest, and hashes; optional unredacted screenshot and HTML snapshot
 - Review UI for deselecting messages and redacting visible sensitive data
 - No server, no API keys, no provider API calls, and no session-token extraction
+
+Original-page evidence is off by default and must be enabled separately for each ZIP. It can include removed or redacted content. Captures that reach a scrolling or loading limit are marked incomplete in the review and exports.
 
 ## Development
 

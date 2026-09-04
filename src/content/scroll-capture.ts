@@ -15,26 +15,30 @@ export async function extractWithScrollCapture(
   document: Document,
   options: { useProviderCopy?: boolean } = {}
 ): Promise<ConversationExport> {
+  const messageRoots = () => {
+    const roots = adapter.messageElements?.(document);
+    return roots?.length ? roots : genericMessageElements(document);
+  };
+  const scroller = findScroller(document, messageRoots());
+  const originalTop = scroller.scrollTop;
+  const wasAtBottom = originalTop >= maxScrollTop(scroller) - 1;
   setProviderCopyEnabled(Boolean(options.useProviderCopy));
   try {
-    const messageRoots = () => adapter.messageElements?.(document) ?? genericMessageElements(document);
-    const scroller = findScroller(document, messageRoots());
-    const originalTop = scroller.scrollTop;
-    const wasAtBottom = originalTop >= maxScrollTop(scroller) - 1;
-
-    await loadOlderMessages(scroller, messageRoots);
-    const snapshots = await walkAndExtract(adapter, document, scroller, messageRoots);
-
-    // Loading older turns grows the thread, so "bottom" moves; keep the user where they were.
-    scroller.scrollTop = wasAtBottom ? maxScrollTop(scroller) : Math.min(originalTop, maxScrollTop(scroller));
-    return mergeSnapshots(snapshots);
+    const loaded = await loadOlderMessages(scroller, messageRoots);
+    const { snapshots, reachedBottom } = await walkAndExtract(adapter, document, scroller, messageRoots);
+    const reasons: NonNullable<ConversationExport["capture"]>["reasons"] = [];
+    if (!loaded) reasons.push("load-limit");
+    if (!reachedBottom) reasons.push("walk-limit");
+    return { ...mergeSnapshots(snapshots), capture: { status: reasons.length ? "incomplete" : "complete", reasons } };
   } finally {
+    // Loading older turns grows the thread, so the bottom moves.
+    scroller.scrollTop = wasAtBottom ? maxScrollTop(scroller) : Math.min(originalTop, maxScrollTop(scroller));
     setProviderCopyEnabled(false);
   }
 }
 
 // Providers paginate upwards: hitting the top fetches older turns and prepends them.
-async function loadOlderMessages(scroller: HTMLElement, messageRoots: () => Element[]): Promise<void> {
+async function loadOlderMessages(scroller: HTMLElement, messageRoots: () => Element[]): Promise<boolean> {
   let stableRounds = 0;
   for (let round = 0; round < LOAD_MAX_ROUNDS; round += 1) {
     const before = topSignature(scroller, messageRoots());
@@ -45,11 +49,12 @@ async function loadOlderMessages(scroller: HTMLElement, messageRoots: () => Elem
     const after = topSignature(scroller, messageRoots());
     if (scroller.scrollTop <= 1 && before === after) {
       stableRounds += 1;
-      if (stableRounds >= 2) return;
+      if (stableRounds >= 2) return true;
     } else {
       stableRounds = 0;
     }
   }
+  return false;
 }
 
 // Virtualised lists only render turns near the viewport, so we snapshot while walking down.
@@ -58,9 +63,9 @@ async function walkAndExtract(
   document: Document,
   scroller: HTMLElement,
   messageRoots: () => Element[]
-): Promise<ConversationExport[]> {
+): Promise<{ snapshots: ConversationExport[]; reachedBottom: boolean }> {
   const snapshots: ConversationExport[] = [];
-  let rendered = new Set<Element>();
+  let rendered = "";
   let bottomRounds = 0;
 
   scroller.scrollTop = 0;
@@ -68,15 +73,17 @@ async function walkAndExtract(
 
   for (let step = 0; step < WALK_MAX_STEPS; step += 1) {
     const roots = messageRoots();
-    if (snapshots.length === 0 || roots.length === 0 || !sameElements(rendered, roots)) {
+    // Virtualisers can reuse the same elements for different messages.
+    const signature = JSON.stringify(roots.map((root) => root.outerHTML));
+    if (snapshots.length === 0 || roots.length === 0 || rendered !== signature || bottomRounds > 0) {
       snapshots.push(await adapter.extract(document));
-      rendered = new Set(roots);
+      rendered = signature;
     }
 
     const maxTop = maxScrollTop(scroller);
     if (scroller.scrollTop >= maxTop - 1) {
       bottomRounds += 1;
-      if (bottomRounds >= 2) break;
+      if (bottomRounds >= 2) return { snapshots, reachedBottom: true };
     } else {
       bottomRounds = 0;
     }
@@ -86,7 +93,7 @@ async function walkAndExtract(
     await waitForDomIdle(scroller);
   }
 
-  return snapshots;
+  return { snapshots, reachedBottom: false };
 }
 
 function findScroller(document: Document, roots: Element[]): HTMLElement {
@@ -135,10 +142,6 @@ function topSignature(scroller: HTMLElement, roots: Element[]): string {
   return `${roots.length}:${id}:${scroller.scrollHeight}`;
 }
 
-function sameElements(previous: Set<Element>, current: Element[]): boolean {
-  return previous.size === current.length && current.every((element) => previous.has(element));
-}
-
 // Resolves once the subtree stayed quiet for `quiet` ms (after at least `min` ms), or at `max` ms.
 export function waitForDomIdle(
   root: Node,
@@ -178,11 +181,13 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
   const byKey = new Map<string, ChatMessage>();
 
   for (const snapshot of snapshots) {
-    let anchor = -1;
+    const firstKnown = snapshot.messages.map(messageKey).find((key) => byKey.has(key));
+    let anchor = firstKnown === undefined ? order.length - 1 : order.indexOf(firstKnown) - 1;
     for (const message of snapshot.messages) {
       const key = messageKey(message);
       const known = order.indexOf(key);
       if (known !== -1) {
+        byKey.set(key, message);
         anchor = known;
         continue;
       }
@@ -194,7 +199,7 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
 
   const messages = order.map((key, index) => {
     const message = byKey.get(key)!;
-    return { ...message, metadata: { ...message.metadata, index } };
+    return { ...message, id: `message-${index + 1}`, metadata: { ...message.metadata, index } };
   });
 
   return {
@@ -210,8 +215,8 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
 }
 
 function messageKey(message: ChatMessage): string {
-  const kind = message.metadata.kind ?? "message";
-  if (message.metadata.providerMessageId) return `${kind}:${message.metadata.providerMessageId}`;
+  const kind = message.kind ?? "message";
+  if (message.metadata.providerMessageId) return `${kind}:${message.role}:${message.metadata.providerMessageId}`;
   if (message.metadata.visibleTextHash) return `${kind}:${message.role}:${message.metadata.visibleTextHash}`;
   return `${kind}:${message.role}:${plainKey(message)}`;
 }

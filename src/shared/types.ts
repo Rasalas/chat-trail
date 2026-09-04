@@ -29,6 +29,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "unknown";
   content: ContentBlock[];
+  kind?: "activity" | "document";
   metadata: {
     timestamp?: string;
     model?: string;
@@ -37,7 +38,6 @@ export interface ChatMessage {
     visibleTextHash?: string;
     providerMessageId?: string;
     extractionMethod?: "dom" | "provider-copy";
-    kind?: "activity" | "document";
   };
 }
 
@@ -60,6 +60,7 @@ export interface ManifestMetadata {
 
 export interface ConversationExport {
   schema_version: "1.0";
+  capture?: { status: "complete" | "incomplete"; reasons: Array<"load-limit" | "walk-limit"> };
   source: SourceMetadata;
   messages: ChatMessage[];
   artifacts: Artifact[];
@@ -106,6 +107,16 @@ export interface ExtractionFailure {
 }
 
 export type RuntimeResponse = ExtractionResult | ExtractionFailure;
+
+export type ContentRequest =
+  | { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }
+  | { type: "GET_HTML_SNAPSHOT"; expectedUrl: string }
+  | { type: "START_CONTAINER_SELECTION" };
+
+export type ContentResponse<Request extends ContentRequest> =
+  Request extends { type: "EXTRACT_CONVERSATION" } ? RuntimeResponse :
+  Request extends { type: "GET_HTML_SNAPSHOT" } ? { ok: true; html: string } | ExtractionFailure :
+  { ok: true; selecting: true } | ExtractionFailure;
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeImages: true,

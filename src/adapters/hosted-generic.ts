@@ -82,8 +82,9 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
             messages.push({
               id: stableId(`${provider.id}-thoughts`, thoughts.join("\n")),
               role: "assistant",
+              kind: "activity",
               content: [{ type: "text", text: thoughts.join("\n") }],
-              metadata: { index, selector: provider.thoughtsSelectors.join(", "), kind: "activity", providerMessageId }
+              metadata: { index, selector: provider.thoughtsSelectors.join(", "), providerMessageId }
             });
           }
         }

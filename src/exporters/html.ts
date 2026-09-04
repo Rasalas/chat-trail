@@ -1,10 +1,12 @@
 import { ConversationExport, ContentBlock } from "../shared/types";
 import { escapeHtml } from "../shared/strings";
 import { renderMarkdown } from "../shared/markdown";
+import { captureWarning } from "../shared/capture";
+import { sanitizeContentHtml } from "../shared/sanitize";
 
 export function exportHtml(conversation: ConversationExport): string {
   const messages = conversation.messages.map((message) => {
-    const body = message.content.map(renderBlock).join("\n");
+    const body = sanitizeContentHtml(message.content.map(renderBlock).join("\n"));
     return `<div class="message-row ${escapeHtml(message.role)}">
   <div class="message-body">${body}</div>
 </div>`;
@@ -80,6 +82,7 @@ export function exportHtml(conversation: ConversationExport): string {
       <p class="meta">${meta}${conversation.source.url ? ` · ${escapeHtml(conversation.source.url)}` : ""}</p>
     </header>
     <section class="messages">
+      ${captureWarning(conversation) ? `<p role="alert">${escapeHtml(captureWarning(conversation)!)}</p>` : ""}
       ${messages.join("\n")}
     </section>
   </main>

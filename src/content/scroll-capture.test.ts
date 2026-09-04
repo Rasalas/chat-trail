@@ -9,12 +9,29 @@ function msg(id: string, role: ChatMessage["role"] = "user", kind?: "activity"):
   return {
     id,
     role,
+    kind,
     content: [{ type: "text", text: `text ${id}` }],
-    metadata: { providerMessageId: id, kind }
+    metadata: { providerMessageId: id }
   };
 }
 
 describe("mergeSnapshots", () => {
+  it("updates known messages from later snapshots without reordering", () => {
+    const first = msg("a", "assistant");
+    const complete = { ...first, content: [{ type: "text" as const, text: "Complete reply" }] };
+    const merged = mergeSnapshots([makeConversation([first, msg("b")]), makeConversation([complete, msg("b")])]);
+    expect(merged.messages.map((message) => message.metadata.providerMessageId)).toEqual(["a", "b"]);
+    expect(merged.messages[0].content).toEqual(complete.content);
+  });
+
+  it("assigns different review ids to equal texts with different provider ids", () => {
+    const a = { ...msg("a"), id: "same-content-hash" };
+    const b = { ...msg("b"), id: a.id, content: a.content };
+    const merged = mergeSnapshots([makeConversation([a, b])]);
+    const selected = new Set(merged.messages.map((message) => message.id));
+    selected.delete(merged.messages[1].id);
+    expect(merged.messages.filter((message) => selected.has(message.id))).toEqual([merged.messages[0]]);
+  });
   it("orders messages by position even when the first snapshot already contains the tail", () => {
     // First snapshot after paging to the top: turns 1-2 plus still-mounted tail 46-50.
     const merged = mergeSnapshots([
@@ -46,7 +63,7 @@ describe("mergeSnapshots", () => {
       makeConversation([plain("one", "h1"), plain("two", "h2")]),
       makeConversation([plain("two", "h2"), plain("three", "h3")])
     ]);
-    expect(merged.messages.map((m) => m.id)).toEqual(["one", "two", "three"]);
+    expect(merged.messages.map((m) => m.content[0])).toEqual(["one", "two", "three"].map(text => ({ type: "text", text })));
   });
 });
 
@@ -124,6 +141,66 @@ const fakeAdapter: ChatAdapter = {
 };
 
 describe("extractWithScrollCapture", () => {
+  it("detects changed content when a virtualiser reuses its DOM nodes", async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<div id="scroller" style="overflow-y:auto"><article data-message-author-role="assistant" data-message-id="m0">Turn 0</article></div>';
+      const scroller = document.getElementById("scroller")!;
+      const row = scroller.firstElementChild!;
+      let top = 0;
+      Object.defineProperties(scroller, {
+        clientHeight: { get: () => 800 },
+        scrollHeight: { get: () => 3000 },
+        scrollTop: { get: () => top, set: (value: number) => {
+          top = value;
+          const index = Math.floor(value / 1000);
+          row.setAttribute("data-message-id", `m${index}`);
+          row.textContent = `Turn ${index}`;
+        } }
+      });
+      const pending = extractWithScrollCapture(fakeAdapter, document);
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(conversation.messages.map((message) => message.metadata.providerMessageId)).toEqual(["m0", "m1", "m2"]);
+      expect(conversation.capture?.status).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports the older-message loading limit and restores the scroll position on failure", async () => {
+    vi.useFakeTimers();
+    try {
+      buildVirtualThread(1000, 10, 300);
+      const pending = extractWithScrollCapture(fakeAdapter, document);
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(conversation.capture?.reasons).toContain("load-limit");
+
+      const { scroller: failingScroller } = buildVirtualThread(10, 10);
+      const before = failingScroller.scrollTop;
+      const failed = extractWithScrollCapture({ ...fakeAdapter, extract: async () => { throw new Error("Extraction failed"); } }, document);
+      const rejection = expect(failed).rejects.toThrow("Extraction failed");
+      await vi.runAllTimersAsync();
+      await rejection;
+      expect(failingScroller.scrollTop).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("reports an incomplete capture when the walk limit is reached", async () => {
+    vi.useFakeTimers();
+    try {
+      buildVirtualThread(300, 300, 1000);
+      const pending = extractWithScrollCapture(fakeAdapter, document);
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(conversation.messages.length).toBeLessThan(300);
+      expect(conversation.capture).toEqual({ status: "incomplete", reasons: ["walk-limit"] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("pages to the top and walks a virtualised thread, capturing every turn in order", async () => {
     const { scroller } = buildVirtualThread();
     const extractSpy = vi.spyOn(fakeAdapter, "extract");

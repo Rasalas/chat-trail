@@ -23,7 +23,7 @@ w.chrome.runtime.getManifest = () => ({ version: "verify" });
   const conversation = await extractWithScrollCapture(adapter, document);
   const ms = Math.round(performance.now() - t0);
 
-  const messages = conversation.messages.filter((m) => m.metadata.kind !== "activity");
+  const messages = conversation.messages.filter((m) => m.kind !== "activity");
   const ids = messages.map((m) => m.metadata.providerMessageId);
   const numeric = ids.every((id) => id !== undefined && /^\d+$/.test(id)) ? ids.map(Number) : null;
   const sorted = numeric ? [...numeric].sort((a, b) => a - b) : null;

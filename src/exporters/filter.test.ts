@@ -8,6 +8,15 @@ function optionsWith(overrides: Partial<typeof DEFAULT_EXPORT_OPTIONS>) {
 }
 
 describe("applyExportOptions", () => {
+  it("keeps document sections with metadata and interim replies disabled", () => {
+    const conversation = makeConversation([0, 1, 2].map((index) => {
+      const message = makeMessage("assistant", index, [{ type: "text", text: `Section ${index}` }]);
+      message.kind = "document";
+      return message;
+    }));
+    const filtered = applyExportOptions(conversation, optionsWith({ includeMetadata: false, collapseIntermediate: false }));
+    expect(texts(filtered)).toEqual(["Section 0", "Section 1", "Section 2"]);
+  });
   it("drops image blocks when includeImages is off", () => {
     const conversation = makeConversation([
       makeMessage("assistant", 0, [

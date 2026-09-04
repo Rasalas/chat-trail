@@ -609,3 +609,5 @@ details.popover[open] > summary.primary {
     max-width: 88%;
   }
 }
+
+.capture-notice { padding: 12px; border: 1px solid #b36b00; border-radius: 8px; color: #8a4f00; background: #fff4d6; }

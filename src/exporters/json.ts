@@ -10,6 +10,7 @@ export function exportJson(conversation: ConversationExport): string {
       url: conversation.source.url,
       captured_at: conversation.source.captured_at,
       extension_version: conversation.manifest.extension_version,
+      capture: conversation.capture,
       message_count: conversation.messages.length,
       messages: conversation.messages.map((message) => ({
         role: message.role,
