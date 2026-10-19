@@ -43,7 +43,7 @@ export interface PillHandle {
 
 const STYLE = `
 :host { all: initial; }
-.pill { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; align-items: center; gap: 10px;
+.pill { position: fixed; right: 16px; top: 72px; z-index: 2147483647; display: flex; align-items: center; gap: 10px;
   max-width: min(420px, calc(100vw - 32px)); padding: 9px 10px 9px 12px; border-radius: 9px; background: #171717; color: #fffefa;
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 .dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #35a08a; }
@@ -54,6 +54,7 @@ const STYLE = `
 button { flex: 0 0 auto; padding: 4px 8px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; background: transparent;
   color: inherit; font: inherit; cursor: pointer; }
 button:hover { background: rgba(255,255,255,.1); }
+button:focus-visible { outline: 2px solid #35a08a; outline-offset: 2px; }
 button[hidden] { display: none; }
 @keyframes pulse { from { opacity: 1; } to { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
@@ -73,6 +74,7 @@ export function createPill(document: Document, handlers: { onCancel(): void; onC
     const pill = document.createElement("div");
     pill.setAttribute("role", "status");
     pill.setAttribute("aria-live", "polite");
+    pill.setAttribute("aria-atomic", "true");
     const dot = document.createElement("span");
     dot.className = "dot";
     const text = document.createElement("span");
