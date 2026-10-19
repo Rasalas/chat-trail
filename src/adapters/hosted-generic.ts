@@ -60,9 +60,8 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
     artifacts: false,
     attachments: true
   },
-  matches(url) {
-    return provider.hosts.some((host) => host.test(url.hostname));
-  },
+  matchesHost: (url) => provider.hosts.some((host) => host.test(url.hostname)),
+  matches: (url) => provider.hosts.some((host) => host.test(url.hostname)),
   async extract(document) {
     const conversation = createBaseConversation(provider.id, document);
     const model = findModel(document, provider.modelPattern);
