@@ -9,14 +9,14 @@ import { redactText } from "../shared/redaction";
 import { escapeHtml } from "../shared/strings";
 import { slugify } from "../shared/strings";
 import { sha256Hex, stableId } from "../shared/hash";
-import { sendToTabWithContentScript } from "../shared/tabs";
 import { withBusy } from "../shared/ui";
 import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
 import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 import { sanitizeContentHtml } from "../shared/sanitize";
 import { captureWarning } from "../shared/capture";
-import { readReviewSession } from "../shared/review-session";
+import { readReviewSession, updateReviewCapture } from "../shared/review-session";
 import { captureOriginalEvidence } from "./original-evidence";
+import { captureInSourceTab, fetchCapture } from "./source-capture";
 
 const reviewSessionId = new URL(document.location.href).searchParams.get("session");
 const originalPageInput = document.querySelector<HTMLInputElement>("#include-original-page")!;
@@ -51,7 +51,7 @@ let editingId: string | null = null;
 const OPTIONS_STORAGE_KEY = "exportOptions";
 let toastTimer: number | undefined;
 
-refreshButton.addEventListener("click", () => void loadConversation(false));
+refreshButton.addEventListener("click", () => void recapture());
 exportButtons.forEach((button) =>
   button.addEventListener("click", () => {
     closePopovers();
@@ -78,7 +78,7 @@ optionInputs
   .find((input) => input.dataset.option === "useProviderCopy")
   ?.addEventListener("change", () => {
     syncClipboardNote();
-    void loadConversation(false);
+    void recapture();
   });
 document.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
@@ -88,7 +88,7 @@ document.addEventListener("click", (event) => {
 });
 
 syncClipboardNote();
-void restoreOptions().then(() => loadConversation(true));
+void restoreOptions().then(loadStoredCapture);
 
 function closePopovers(): void {
   document.querySelectorAll("details.popover[open]").forEach((popover) => popover.removeAttribute("open"));
@@ -114,40 +114,33 @@ function syncClipboardNote(): void {
   clipboardNote.hidden = !useProviderCopy?.checked;
 }
 
-async function loadConversation(preferManualSelection: boolean): Promise<void> {
-  const options = readOptions();
-  const label = preferManualSelection
-    ? "Reading selected area..."
-    : options.useProviderCopy
-    ? "Reading current tab... (copy buttons are clicked; the clipboard is read and restored)"
-    : "Reading current tab...";
-  await withBusy(actionButtons, showSummary, label, async () => {
-    const session = await readReviewSession(reviewSessionId);
-    const response = preferManualSelection && session.state === "extracting"
-      ? await waitForManualSelection()
-      : preferManualSelection && session.state === "failed"
-        ? (() => { throw new Error(session.error); })()
-        : preferManualSelection && session.response
-          ? session.response
-          : await sendToActiveTab({ type: "EXTRACT_CONVERSATION", useProviderCopy: options.useProviderCopy });
-    if (!response.ok) throw new Error(response.error);
-    conversation = response.conversation;
-    selectedIds.clear();
-    conversation.messages.forEach((message) => selectedIds.add(message.id));
-    editingId = null;
-    originalPageInput.checked = false;
-    render();
+async function loadStoredCapture(): Promise<void> {
+  await withBusy(actionButtons, showSummary, "Loading capture...", async () => {
+    applyResponse(await fetchCapture(await readReviewSession(reviewSessionId)));
   });
 }
 
-async function waitForManualSelection(): Promise<RuntimeResponse> {
-  for (let attempt = 0; attempt < 150; attempt += 1) {
+async function recapture(): Promise<void> {
+  const options = readOptions();
+  const label = options.useProviderCopy
+    ? "Capturing in the source tab... (copy buttons are clicked; the clipboard is read and restored)"
+    : "Capturing in the source tab...";
+  await withBusy(actionButtons, showSummary, label, async () => {
     const session = await readReviewSession(reviewSessionId);
-    if (session.response) return session.response;
-    if (session.state === "failed") throw new Error(session.error);
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
-  }
-  throw new Error("Container extraction timed out.");
+    const captureId = await captureInSourceTab(session.sourceTabId, options.useProviderCopy);
+    await updateReviewCapture(reviewSessionId!, captureId);
+    applyResponse(await fetchCapture({ ...session, captureId }));
+  });
+}
+
+function applyResponse(response: RuntimeResponse): void {
+  if (!response.ok) throw new Error(response.error);
+  conversation = response.conversation;
+  selectedIds.clear();
+  conversation.messages.forEach((message) => selectedIds.add(message.id));
+  editingId = null;
+  originalPageInput.checked = false;
+  render();
 }
 
 function render(): void {
@@ -533,12 +526,6 @@ function inferClipboardRole(role: string | undefined, index: number): ChatMessag
   if (/user|you|human/.test(value)) return "user";
   if (/assistant|chatgpt|claude|ai/.test(value)) return "assistant";
   return index % 2 === 0 ? "user" : "assistant";
-}
-
-async function sendToActiveTab(message: { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }): Promise<RuntimeResponse> {
-  const tabId = await getSourceTabId();
-  if (!tabId) throw new Error("No source tab found. Open the chat tab, then open Chat Trail again.");
-  return sendToTabWithContentScript(tabId, message);
 }
 
 async function getSourceTabId(): Promise<number> {

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeConversation } from "../testing/fixtures";
 
 const stored: Record<string, unknown> = {};
 let nextTabId = 100;
@@ -12,10 +11,8 @@ vi.stubGlobal("chrome", {
   storage: { session: { get, set, remove } },
   tabs: { create, onRemoved: { addListener: vi.fn() } }
 });
-const { handleBackgroundMessage } = await import("./index");
-const { readReviewSession, openReviewSession, closeReviewSession } = await import("../shared/review-session");
-
-const response = { ok: true as const, conversation: makeConversation([]), adapterId: "generic" as const, adapterLabel: "Selected web content" };
+const { handleBackgroundMessage, isBackgroundMessage } = await import("./index");
+const { readReviewSession, openReviewSession, closeReviewSession, updateReviewCapture } = await import("../shared/review-session");
 
 describe("review sessions", () => {
   beforeEach(() => {
@@ -24,33 +21,39 @@ describe("review sessions", () => {
     nextTabId = 100;
   });
 
-  it("stores the pending state before opening the review with its session id", async () => {
-    const { sessionId } = await handleBackgroundMessage({ type: "OPEN_REVIEW" }, 42);
-    expect(await readReviewSession(sessionId!)).toEqual({ sourceTabId: 42, state: "extracting" });
+  it("stores the capture reference before opening the review with its session id", async () => {
+    const { sessionId } = await handleBackgroundMessage({ type: "OPEN_REVIEW", captureId: "cap-1" }, 42);
+    expect(await readReviewSession(sessionId)).toEqual({ sourceTabId: 42, captureId: "cap-1" });
     expect(create).toHaveBeenCalledWith({ url: `chrome-extension://test/src/review/index.html?session=${sessionId}` });
     expect(set.mock.invocationCallOrder[0]).toBeLessThan(create.mock.invocationCallOrder[0]);
   });
 
-  it("keeps normal reviews and out-of-order manual selections isolated", async () => {
-    const normal = await openReviewSession(10);
-    const a = (await handleBackgroundMessage({ type: "OPEN_REVIEW" }, 42)).sessionId!;
-    const b = (await handleBackgroundMessage({ type: "OPEN_REVIEW" }, 43)).sessionId!;
-    await handleBackgroundMessage({ type: "COMPLETE_MANUAL_SELECTION", sessionId: b, response }, 43);
-    await handleBackgroundMessage({ type: "FAIL_MANUAL_SELECTION", sessionId: a, error: "Selection failed" }, 42);
-    expect(await readReviewSession(normal)).toEqual({ sourceTabId: 10, state: "ready" });
-    expect(await readReviewSession(b)).toMatchObject({ sourceTabId: 43, state: "ready", response });
-    expect(await readReviewSession(a)).toMatchObject({ sourceTabId: 42, state: "failed", error: "Selection failed" });
+  it("keeps only small metadata in session storage", async () => {
+    await handleBackgroundMessage({ type: "OPEN_REVIEW", captureId: "cap-1" }, 42);
+    expect(JSON.stringify(stored).length).toBeLessThan(300);
   });
 
-  it("rejects results from a different source tab", async () => {
-    const sessionId = (await handleBackgroundMessage({ type: "OPEN_REVIEW" }, 42)).sessionId!;
-    await expect(handleBackgroundMessage({ type: "COMPLETE_MANUAL_SELECTION", sessionId, response }, 43)).rejects.toThrow("does not belong");
-    expect((await readReviewSession(sessionId)).state).toBe("extracting");
+  it("rejects review requests without a source tab", async () => {
+    await expect(handleBackgroundMessage({ type: "OPEN_REVIEW", captureId: "cap-1" }, undefined)).rejects.toThrow("No source tab");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("accepts only well-formed background messages", () => {
+    expect(isBackgroundMessage({ type: "OPEN_REVIEW", captureId: "x" })).toBe(true);
+    expect(isBackgroundMessage({ type: "OPEN_REVIEW" })).toBe(false);
+    expect(isBackgroundMessage({ type: "COMPLETE_MANUAL_SELECTION", sessionId: "x" })).toBe(false);
+    expect(isBackgroundMessage(null)).toBe(false);
+  });
+
+  it("points a session at a newer capture after a refresh", async () => {
+    const id = await openReviewSession(42, "cap-1");
+    await updateReviewCapture(id, "cap-2");
+    expect(await readReviewSession(id)).toEqual({ sourceTabId: 42, captureId: "cap-2" });
   });
 
   it("cleans up only the closed review and rejects missing sessions", async () => {
-    const a = await openReviewSession(42);
-    const b = await openReviewSession(43);
+    const a = await openReviewSession(42, "cap-a");
+    const b = await openReviewSession(43, "cap-b");
     await closeReviewSession(100);
     await expect(readReviewSession(a)).rejects.toThrow("expired");
     expect((await readReviewSession(b)).sourceTabId).toBe(43);

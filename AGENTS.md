@@ -8,6 +8,19 @@ Local-first browser extension that exports AI chat conversations (Markdown/JSON/
 - `npm test` / `npm run lint` / `npm run typecheck`
 - `npm run probe:build` — builds `dist/verify-scroll.js` (diagnostic, see below)
 
+## Capture flow: always in the visible source tab
+
+Hidden tabs get no scroll events, rAF or IntersectionObserver callbacks, so virtualised chats do not render there
+and lazy loading never fires. Every capture therefore runs while the source tab is in front:
+
+- Popup → `START_CAPTURE {action}` to the content script, then the popup closes. `src/content/controller.ts`
+  captures with an in-page progress pill (Cancel → `AbortSignal`), then downloads/copies in the page or, for
+  `review`, keeps the result in memory under a capture id and sends `OPEN_REVIEW {captureId}` to the background.
+- Review page → `GET_CAPTURE_RESULT {captureId}` from the source tab. Refresh activates the source tab, sends
+  `RUN_CAPTURE`, then switches back (`src/review/source-capture.ts`).
+- `chrome.storage.session` holds only `{sourceTabId, captureId}`; results (image data URLs) stay in page memory.
+- Re-injection is guarded (`src/content/guard.ts`); do not register listeners outside `claimContentScript()`.
+
 ## Scroll capture: why it exists and what each provider does
 
 `src/content/scroll-capture.ts` runs for every adapter. It finds the scroll container as the nearest scrollable

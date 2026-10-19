@@ -10,22 +10,32 @@ const WALK_MAX_STEPS = 200;
 
 const GENERIC_MESSAGE_SELECTOR = "[data-message-author-role], [data-testid='transcript-row'], article, [role='listitem']";
 
+export type CaptureProgress = { phase: "loading"; round: number } | { phase: "reading"; count: number };
+
+export interface ScrollCaptureOptions {
+  useProviderCopy?: boolean;
+  /** Aborting stops between rounds/steps; the promise rejects with `signal.reason`. */
+  signal?: AbortSignal;
+  onProgress?: (progress: CaptureProgress) => void;
+}
+
 export async function extractWithScrollCapture(
   adapter: ChatAdapter,
   document: Document,
-  options: { useProviderCopy?: boolean } = {}
+  options: ScrollCaptureOptions = {}
 ): Promise<ConversationExport> {
   const messageRoots = () => {
     const roots = adapter.messageElements?.(document);
     return roots?.length ? roots : genericMessageElements(document);
   };
+  options.signal?.throwIfAborted();
   const scroller = findScroller(document, messageRoots());
   const originalTop = scroller.scrollTop;
   const wasAtBottom = originalTop >= maxScrollTop(scroller) - 1;
   setProviderCopyEnabled(Boolean(options.useProviderCopy));
   try {
-    const loaded = await loadOlderMessages(scroller, messageRoots);
-    const { snapshots, reachedBottom } = await walkAndExtract(adapter, document, scroller, messageRoots);
+    const loaded = await loadOlderMessages(scroller, messageRoots, options);
+    const { snapshots, reachedBottom } = await walkAndExtract(adapter, document, scroller, messageRoots, options);
     const reasons: NonNullable<ConversationExport["capture"]>["reasons"] = [];
     if (!loaded) reasons.push("load-limit");
     if (!reachedBottom) reasons.push("walk-limit");
@@ -38,13 +48,20 @@ export async function extractWithScrollCapture(
 }
 
 // Providers paginate upwards: hitting the top fetches older turns and prepends them.
-async function loadOlderMessages(scroller: HTMLElement, messageRoots: () => Element[]): Promise<boolean> {
+async function loadOlderMessages(
+  scroller: HTMLElement,
+  messageRoots: () => Element[],
+  { signal, onProgress }: ScrollCaptureOptions
+): Promise<boolean> {
   let stableRounds = 0;
   for (let round = 0; round < LOAD_MAX_ROUNDS; round += 1) {
+    signal?.throwIfAborted();
+    onProgress?.({ phase: "loading", round: round + 1 });
     const before = topSignature(scroller, messageRoots());
     scroller.scrollTop = 0;
     // Slow providers (Gemini) answer the top-reached fetch after >1s, so confirm "nothing more" patiently.
-    await waitForDomIdle(scroller, { min: stableRounds > 0 ? LOAD_CONFIRM_WAIT_MS : LOAD_MIN_WAIT_MS });
+    await waitForDomIdle(scroller, { min: stableRounds > 0 ? LOAD_CONFIRM_WAIT_MS : LOAD_MIN_WAIT_MS, signal });
+    signal?.throwIfAborted();
 
     const after = topSignature(scroller, messageRoots());
     if (scroller.scrollTop <= 1 && before === after) {
@@ -62,22 +79,31 @@ async function walkAndExtract(
   adapter: ChatAdapter,
   document: Document,
   scroller: HTMLElement,
-  messageRoots: () => Element[]
+  messageRoots: () => Element[],
+  { signal, onProgress }: ScrollCaptureOptions
 ): Promise<{ snapshots: ConversationExport[]; reachedBottom: boolean }> {
   const snapshots: ConversationExport[] = [];
+  const seen = new Set<string>();
   let rendered = "";
   let bottomRounds = 0;
 
   scroller.scrollTop = 0;
-  await waitForDomIdle(scroller);
+  await waitForDomIdle(scroller, { signal });
 
   for (let step = 0; step < WALK_MAX_STEPS; step += 1) {
+    signal?.throwIfAborted();
     const roots = messageRoots();
     // Virtualisers can reuse the same elements for different messages.
     const signature = JSON.stringify(roots.map((root) => root.outerHTML));
     if (snapshots.length === 0 || roots.length === 0 || rendered !== signature || bottomRounds > 0) {
-      snapshots.push(await adapter.extract(document));
+      const snapshot = await adapter.extract(document);
+      snapshots.push(snapshot);
       rendered = signature;
+      // Approximate running count for progress only; the merge decides the real result.
+      for (const message of snapshot.messages) {
+        seen.add(`${message.role}:${message.metadata.providerMessageId ?? message.metadata.visibleTextHash ?? message.id}`);
+      }
+      onProgress?.({ phase: "reading", count: seen.size });
     }
 
     const maxTop = maxScrollTop(scroller);
@@ -90,7 +116,7 @@ async function walkAndExtract(
 
     const stride = Math.max(420, Math.floor(scroller.clientHeight * 0.8));
     scroller.scrollTop = Math.min(maxTop, scroller.scrollTop + stride);
-    await waitForDomIdle(scroller);
+    await waitForDomIdle(scroller, { signal });
   }
 
   return { snapshots, reachedBottom: false };
@@ -145,7 +171,7 @@ function topSignature(scroller: HTMLElement, roots: Element[]): string {
 // Resolves once the subtree stayed quiet for `quiet` ms (after at least `min` ms), or at `max` ms.
 export function waitForDomIdle(
   root: Node,
-  { quiet = IDLE_QUIET_MS, max = IDLE_MAX_MS, min = 0 }: { quiet?: number; max?: number; min?: number } = {}
+  { quiet = IDLE_QUIET_MS, max = IDLE_MAX_MS, min = 0, signal }: { quiet?: number; max?: number; min?: number; signal?: AbortSignal } = {}
 ): Promise<void> {
   return new Promise((resolve) => {
     const started = Date.now();
@@ -155,6 +181,7 @@ export function waitForDomIdle(
       window.clearTimeout(quietTimer);
       window.clearTimeout(maxTimer);
       observer.disconnect();
+      signal?.removeEventListener("abort", finish);
       resolve();
     };
     const armQuiet = () => {
@@ -166,6 +193,8 @@ export function waitForDomIdle(
     const observer = new MutationObserver(armQuiet);
     observer.observe(root, { childList: true, subtree: true, characterData: true });
     const maxTimer = window.setTimeout(finish, max);
+    if (signal?.aborted) return finish();
+    signal?.addEventListener("abort", finish);
     armQuiet();
   });
 }

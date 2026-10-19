@@ -215,6 +215,47 @@ describe("extractWithScrollCapture", () => {
       vi.useRealTimers();
     }
   });
+  it("stops on abort, restores the scroll position and reports progress until then", async () => {
+    vi.useFakeTimers();
+    try {
+      const { scroller } = buildVirtualThread(1000, 10, 300);
+      const controller = new AbortController();
+      const progress: string[] = [];
+      const pending = extractWithScrollCapture(fakeAdapter, document, {
+        signal: controller.signal,
+        onProgress: (update) => progress.push(update.phase)
+      });
+      const rejection = expect(pending).rejects.toThrow("Capture cancelled.");
+      await vi.advanceTimersByTimeAsync(3000);
+      controller.abort(new Error("Capture cancelled."));
+      await vi.runAllTimersAsync();
+      await rejection;
+      expect(progress[0]).toBe("loading");
+      expect(progress).not.toContain("reading");
+      // Started at the bottom, so it returns to the (now taller) bottom.
+      expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("reports reading progress with a running message count", async () => {
+    vi.useFakeTimers();
+    try {
+      buildVirtualThread(30, 10);
+      const counts: number[] = [];
+      const pending = extractWithScrollCapture(fakeAdapter, document, {
+        onProgress: (update) => { if (update.phase === "reading") counts.push(update.count); }
+      });
+      await vi.runAllTimersAsync();
+      await pending;
+      expect(counts.length).toBeGreaterThan(0);
+      expect(counts).toEqual([...counts].sort((a, b) => a - b));
+      expect(counts.at(-1)).toBe(30);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("reports an incomplete capture when the walk limit is reached", async () => {
     vi.useFakeTimers();
     try {

@@ -1,16 +1,11 @@
-import { RuntimeResponse } from "../shared/types";
-import { closeReviewSession, finishManualSelection, openReviewSession } from "../shared/review-session";
-
-type BackgroundMessage =
-  | { type: "OPEN_REVIEW" }
-  | { type: "COMPLETE_MANUAL_SELECTION"; sessionId: string; response: RuntimeResponse }
-  | { type: "FAIL_MANUAL_SELECTION"; sessionId: string; error: string };
+import { BackgroundRequest } from "../shared/types";
+import { closeReviewSession, openReviewSession } from "../shared/review-session";
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void closeReviewSession(tabId).catch(console.warn);
 });
 
-chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!isBackgroundMessage(message)) return;
 
   void handleBackgroundMessage(message, sender.tab?.id)
@@ -20,27 +15,16 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendRe
 });
 
 export async function handleBackgroundMessage(
-  message: BackgroundMessage,
+  message: BackgroundRequest,
   sourceTabId: number | undefined
-): Promise<{ ok: true; sessionId?: string }> {
-  if (message.type === "OPEN_REVIEW") {
-    if (sourceTabId == null) throw new Error("No source tab for this selection.");
-    const sessionId = await openReviewSession(sourceTabId, true);
-    return { ok: true, sessionId };
-  }
-
-  if (message.type === "COMPLETE_MANUAL_SELECTION") {
-    await finishManualSelection(message.sessionId, sourceTabId, message.response);
-    return { ok: true };
-  }
-
-  await finishManualSelection(message.sessionId, sourceTabId, { ok: false, error: message.error });
-  return { ok: true };
+): Promise<{ ok: true; sessionId: string }> {
+  if (sourceTabId == null) throw new Error("No source tab for this capture.");
+  const sessionId = await openReviewSession(sourceTabId, message.captureId);
+  return { ok: true, sessionId };
 }
 
-function isBackgroundMessage(message: unknown): message is BackgroundMessage {
-  if (!message || typeof message !== "object" || !("type" in message)) return false;
-  if (message.type === "OPEN_REVIEW") return true;
-  return "sessionId" in message && typeof message.sessionId === "string" &&
-    (message.type === "COMPLETE_MANUAL_SELECTION" || message.type === "FAIL_MANUAL_SELECTION");
+export function isBackgroundMessage(message: unknown): message is BackgroundRequest {
+  if (!message || typeof message !== "object") return false;
+  const candidate = message as { type?: unknown; captureId?: unknown };
+  return candidate.type === "OPEN_REVIEW" && typeof candidate.captureId === "string";
 }
