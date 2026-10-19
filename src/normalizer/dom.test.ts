@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractContentBlocks } from "./dom";
+import { extractContentBlocks, inferRole } from "./dom";
 
 function root(html: string): Element {
   document.body.innerHTML = `<div id="root">${html}</div>`;
@@ -88,5 +88,34 @@ describe("extractContentBlocks", () => {
     expect(images[0]).toMatchObject({ src: "https://images.example.com/photo.jpg" });
     const text = blocks.map((block) => (block.type === "text" ? block.text : "")).join(" ");
     expect(text).not.toContain("kopieren");
+  });
+});
+
+describe("inferRole", () => {
+  function element(html: string): Element {
+    document.body.innerHTML = html;
+    return document.body.firstElementChild!;
+  }
+
+  it("does not treat pronouns in the message text as a speaker", () => {
+    expect(inferRole(element(`<div class="prose">Here is what you need to know.</div>`), 1)).toBe("assistant");
+    expect(inferRole(element(`<div class="prose">Let me explain the trade-offs.</div>`), 1)).toBe("assistant");
+    expect(inferRole(element(`<div class="prose">Ich hätte eine Frage an dich.</div>`), 1)).toBe("assistant");
+  });
+
+  it("uses explicit role attributes and classes", () => {
+    expect(inferRole(element(`<div data-message-author-role="assistant">You asked about X.</div>`), 0)).toBe("assistant");
+    expect(inferRole(element(`<div class="message user-message">Hi</div>`), 1)).toBe("user");
+    expect(inferRole(element(`<div aria-label="Assistant message">Hi</div>`), 0)).toBe("assistant");
+  });
+
+  it("uses a leading speaker label", () => {
+    expect(inferRole(element(`<div>You said: hello there</div>`), 1)).toBe("user");
+    expect(inferRole(element(`<div>ChatGPT said: hi</div>`), 0)).toBe("assistant");
+  });
+
+  it("falls back to alternating roles", () => {
+    expect(inferRole(element(`<div>First</div>`), 0)).toBe("user");
+    expect(inferRole(element(`<div>Second</div>`), 1)).toBe("assistant");
   });
 });
