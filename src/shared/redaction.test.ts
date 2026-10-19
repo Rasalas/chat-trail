@@ -29,6 +29,38 @@ describe("redactText", () => {
     expect(redactText("call 030 12345678 now")).toBe("call [redacted-phone] now");
   });
 
+  it("redacts common phone formats", () => {
+    for (const phone of ["+49 170 1234567", "(030) 1234567", "030/1234567", "+1 415-555-0132", "415.555.0132"]) {
+      expect(redactText(`call ${phone} now`)).toBe("call [redacted-phone] now");
+    }
+  });
+
+  it("keeps dates, times, IP addresses, versions and plain numbers", () => {
+    for (const text of [
+      "2024-01-15",
+      "2024-01-15 10:30",
+      "15.01.2024",
+      "01/15/2024",
+      "10:30:45",
+      "192.168.100.200",
+      "1.2.3.4.5",
+      "10.0.0.1",
+      "2019-2024",
+      "1 000 000",
+      "12345678"
+    ]) {
+      expect(redactText(`value ${text} end`)).toBe(`value ${text} end`);
+    }
+  });
+
+  it("keeps parentheses around a redacted phone number", () => {
+    expect(redactText("office (+49 30 1234567) only")).toBe("office ([redacted-phone]) only");
+  });
+
+  it("redacts a phone number that follows a date", () => {
+    expect(redactText("on 2024-01-15 call +49 170 1234567")).toBe("on 2024-01-15 call [redacted-phone]");
+  });
+
   it("redacts IBANs with and without grouping spaces", () => {
     expect(redactText("pay to DE89 3704 0044 0532 0130 00 please")).toBe(
       "pay to [redacted-iban] please"
