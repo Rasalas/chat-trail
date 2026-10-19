@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { extractContentBlocks, inferRole } from "./dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { beginImageCache, endImageCache, extractContentBlocks, inferRole } from "./dom";
 
 function root(html: string): Element {
   document.body.innerHTML = `<div id="root">${html}</div>`;
@@ -117,5 +117,87 @@ describe("inferRole", () => {
   it("falls back to alternating roles", () => {
     expect(inferRole(element(`<div>First</div>`), 0)).toBe("user");
     expect(inferRole(element(`<div>Second</div>`), 1)).toBe("assistant");
+  });
+});
+
+describe("image data URLs", () => {
+  function fakeLoad(img: HTMLImageElement, isLoaded: () => boolean): void {
+    Object.defineProperties(img, {
+      complete: { get: isLoaded },
+      naturalWidth: { get: () => (isLoaded() ? 10 : 0) },
+      naturalHeight: { get: () => (isLoaded() ? 10 : 0) }
+    });
+  }
+
+  function stubCanvas() {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: () => undefined } as never);
+    return vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,AAAA");
+  }
+
+  afterEach(() => {
+    endImageCache();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("encodes each image src once per capture", async () => {
+    const toDataUrl = stubCanvas();
+    const scope = root(`<p>Text</p><img src="https://example.com/a.png" alt="a">`);
+    fakeLoad(scope.querySelector("img")!, () => true);
+
+    beginImageCache();
+    const first = await extractContentBlocks(scope);
+    await extractContentBlocks(scope);
+    expect(toDataUrl).toHaveBeenCalledTimes(1);
+    expect(first[1]).toMatchObject({ type: "image", data_url: "data:image/png;base64,AAAA", mime_type: "image/png" });
+
+    endImageCache();
+    await extractContentBlocks(scope);
+    expect(toDataUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache an image that has not loaded yet", async () => {
+    vi.useFakeTimers();
+    const toDataUrl = stubCanvas();
+    const scope = root(`<img src="https://example.com/lazy.png" alt="lazy">`);
+    let loaded = false;
+    fakeLoad(scope.querySelector("img")!, () => loaded);
+
+    beginImageCache();
+    const pending = extractContentBlocks(scope);
+    await vi.advanceTimersByTimeAsync(800);
+    expect((await pending)[0]).toMatchObject({ type: "image", data_url: undefined });
+
+    loaded = true;
+    expect((await extractContentBlocks(scope))[0]).toMatchObject({ data_url: "data:image/png;base64,AAAA" });
+    expect(toDataUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for unloaded images in parallel and keeps block order", async () => {
+    vi.useFakeTimers();
+    stubCanvas();
+    const scope = root(`<img src="https://example.com/1.png" alt="one"><p>Between</p><img src="https://example.com/2.png" alt="two">`);
+    scope.querySelectorAll("img").forEach((img) => fakeLoad(img, () => false));
+
+    let done = false;
+    const pending = extractContentBlocks(scope).then((blocks) => {
+      done = true;
+      return blocks;
+    });
+    // Sequential waits would need 1600 ms; parallel ones all end at the 800 ms cap.
+    await vi.advanceTimersByTimeAsync(800);
+    expect(done).toBe(true);
+    expect((await pending).map((block) => (block.type === "image" ? block.alt : block.type))).toEqual(["one", "text", "two"]);
+  });
+
+  it("does not convert images inside details, which are rendered as Markdown", async () => {
+    const toDataUrl = stubCanvas();
+    // On the prototype, so the detached clone of the details body counts as loaded too.
+    vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(10);
+    vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(10);
+    const blocks = await extractContentBlocks(root(`<details><summary>More</summary><img src="https://example.com/d.png" alt="d"></details>`));
+    expect(toDataUrl).not.toHaveBeenCalled();
+    expect(blocks[0]).toMatchObject({ type: "text", text: expect.stringContaining("![d](https://example.com/d.png)") });
   });
 });

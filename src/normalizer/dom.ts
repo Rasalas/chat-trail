@@ -48,7 +48,10 @@ export async function elementToMessage(
 
 export async function extractContentBlocks(root: Element): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [];
-  await collectBlocksInOrder(root, blocks, new Set());
+  const walk: BlockWalk = { seenImages: new Set(), conversions: [], convertImages: true };
+  collectBlocksInOrder(root, blocks, walk);
+  // Images load and encode in parallel; each conversion fills in its block's data_url.
+  await Promise.all(walk.conversions);
 
   return mergeAdjacentText(blocks.filter((block) => {
     if (block.type === "text") return block.text.length > 0;
@@ -155,7 +158,14 @@ function tableToMarkdown(table: HTMLTableElement): string {
     .join("\n");
 }
 
-async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
+interface BlockWalk {
+  seenImages: Set<Element>;
+  /** Pending image-to-data-URL conversions; awaited together once the walk is done. */
+  conversions: Promise<void>[];
+  convertImages: boolean;
+}
+
+function collectBlocksInOrder(root: Element, blocks: ContentBlock[], walk: BlockWalk): void {
   for (const child of root.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       const text = compactWhitespace(child.textContent ?? "");
@@ -167,12 +177,12 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenI
     if (child.matches(WALKER_IGNORED_SELECTOR)) continue;
 
     if (child.matches('[class*="search-image"]')) {
-      await harvestImages(child, blocks, seenImages);
+      harvestImages(child, blocks, walk);
       continue;
     }
 
     if (child.matches("button")) {
-      await harvestImages(child, blocks, seenImages);
+      harvestImages(child, blocks, walk);
       continue;
     }
 
@@ -182,7 +192,7 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenI
     }
 
     if (child.matches("details")) {
-      const details = await detailsToText(child, seenImages);
+      const details = detailsToText(child, walk);
       if (details) blocks.push({ type: "text", text: details });
       continue;
     }
@@ -216,7 +226,7 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenI
     }
 
     if (child.matches("img")) {
-      await pushImage(child as HTMLImageElement, blocks, seenImages);
+      pushImage(child as HTMLImageElement, blocks, walk);
       continue;
     }
 
@@ -226,7 +236,7 @@ async function collectBlocksInOrder(root: Element, blocks: ContentBlock[], seenI
       continue;
     }
 
-    await collectBlocksInOrder(child, blocks, seenImages);
+    collectBlocksInOrder(child, blocks, walk);
   }
 }
 
@@ -235,13 +245,13 @@ const WALKER_IGNORED_SELECTOR =
 
 const INLINE_IGNORED_SELECTOR = `${WALKER_IGNORED_SELECTOR}, button`;
 
-async function harvestImages(scope: Element, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
+function harvestImages(scope: Element, blocks: ContentBlock[], walk: BlockWalk): void {
   for (const img of [...scope.querySelectorAll("img")]) {
-    if (!seenImages.has(img)) await pushImage(img, blocks, seenImages);
+    if (!walk.seenImages.has(img)) pushImage(img, blocks, walk);
   }
 }
 
-async function detailsToText(element: Element, seenImages: Set<Element>): Promise<string> {
+function detailsToText(element: Element, walk: BlockWalk): string {
   const summary = element.querySelector(":scope > summary");
   const summaryText = compactWhitespace(summary ? childrenInlineMarkdown(summary) : "").trim();
 
@@ -252,7 +262,8 @@ async function detailsToText(element: Element, seenImages: Set<Element>): Promis
   }
 
   const bodyBlocks: ContentBlock[] = [];
-  await collectBlocksInOrder(body, bodyBlocks, seenImages);
+  // The body is a detached clone rendered as plain Markdown, so its images are never converted.
+  collectBlocksInOrder(body, bodyBlocks, { ...walk, convertImages: false });
   const bodyText = bodyBlocks.map(renderBlockToMarkdown).filter(Boolean).join("\n\n");
 
   if (!summaryText && !bodyText) return "";
@@ -281,26 +292,34 @@ function quoteLines(text: string): string {
     .join("\n");
 }
 
-async function pushImage(image: HTMLImageElement, blocks: ContentBlock[], seenImages: Set<Element>): Promise<void> {
-  if (seenImages.has(image)) return;
-  seenImages.add(image);
+function pushImage(image: HTMLImageElement, blocks: ContentBlock[], walk: BlockWalk): void {
+  if (walk.seenImages.has(image)) return;
+  walk.seenImages.add(image);
 
   const src = image.currentSrc || image.src;
   if (src && /favicon|sprite|\/icons?\/|^data:image\/svg/i.test(src)) return;
 
   const rawAlt = image.alt || image.title;
   const alt = rawAlt && /^https?:\/\//i.test(rawAlt) ? undefined : rawAlt;
-  const data_url = await imageToDataUrl(image);
-  if (src || alt || data_url) {
-    blocks.push({
-      type: "image",
-      src,
-      alt,
-      filename: filenameFromUrl(src),
-      data_url,
-      mime_type: data_url ? mimeTypeFromDataUrl(data_url) : undefined
-    });
-  }
+  // A data URL always comes from `src`, so an image without src or alt has nothing to keep.
+  if (!src && !alt) return;
+
+  const block: Extract<ContentBlock, { type: "image" }> = {
+    type: "image",
+    src,
+    alt,
+    filename: filenameFromUrl(src),
+    data_url: undefined,
+    mime_type: undefined
+  };
+  blocks.push(block);
+  if (!walk.convertImages) return;
+  walk.conversions.push(
+    imageToDataUrl(image).then((dataUrl) => {
+      block.data_url = dataUrl;
+      block.mime_type = dataUrl ? mimeTypeFromDataUrl(dataUrl) : undefined;
+    })
+  );
 }
 
 function formatProseBlock(element: Element): string {
@@ -426,15 +445,31 @@ function filenameFromUrl(url: string): string | undefined {
   }
 }
 
+// Scroll capture extracts the same mounted images on every step; within one capture each src is encoded once.
+// `null` marks an image that loaded but cannot be encoded (cross-origin taint), which will not change.
+let imageCache: Map<string, string | null> | undefined;
+
+export function beginImageCache(): void {
+  imageCache = new Map();
+}
+
+export function endImageCache(): void {
+  imageCache = undefined;
+}
+
 async function imageToDataUrl(image: HTMLImageElement): Promise<string | undefined> {
   const src = image.currentSrc || image.src;
   if (!src) return undefined;
   if (src.startsWith("data:image/")) return src;
 
+  const cached = imageCache?.get(src);
+  if (cached !== undefined) return cached ?? undefined;
+
   if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
     await waitForImage(image);
   }
 
+  // Not cached: a lazy image may have loaded by the next snapshot.
   if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) return undefined;
 
   try {
@@ -444,8 +479,11 @@ async function imageToDataUrl(image: HTMLImageElement): Promise<string | undefin
     const context = canvas.getContext("2d");
     if (!context) return undefined;
     context.drawImage(image, 0, 0);
-    return canvas.toDataURL("image/png");
+    const dataUrl = canvas.toDataURL("image/png");
+    imageCache?.set(src, dataUrl);
+    return dataUrl;
   } catch {
+    imageCache?.set(src, null);
     return undefined;
   }
 }
