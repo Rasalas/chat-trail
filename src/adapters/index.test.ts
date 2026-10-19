@@ -29,4 +29,10 @@ describe("selectAdapter", () => {
     expect(selectAdapter(new URL("https://example.com/"), page("Chat", `<div data-message-author-role="user">Hi</div>`)).id).toBe("chatgpt");
     expect(selectAdapter(new URL("https://example.com/"), page("Plain page")).id).toBe("generic");
   });
+
+  it("needs Claude transcript markup, not just a title, on unknown hosts", () => {
+    expect(selectAdapter(new URL("https://blog.example.com/claude-vs-gpt"), page("Claude vs GPT", "<article><p>Post</p></article>")).id).toBe("generic");
+    const mirrored = page("Claude", `<div data-testid="transcript-row" data-index="0">Hi</div>`);
+    expect(selectAdapter(new URL("https://intranet.example.com/chat"), mirrored).id).toBe("claude");
+  });
 });

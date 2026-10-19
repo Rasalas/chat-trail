@@ -4,6 +4,9 @@ import { stableId } from "../shared/hash";
 import { enhanceMessageWithProviderCopy } from "../normalizer/copy-enhancement";
 import { createBaseConversation, dropContained, elementToMessage, inferRole, selectorFor, uniqueElements } from "../normalizer/dom";
 
+const CLAUDE_MARKUP =
+  "[data-testid='transcript-row'], [data-testid='user-message'], [data-testid='assistant-message'], .font-claude-response, [class*='font-claude-message']";
+
 export const claudeAdapter: ChatAdapter = {
   id: "claude",
   label: "Claude",
@@ -16,7 +19,8 @@ export const claudeAdapter: ChatAdapter = {
   },
   matchesHost: isClaudeHost,
   matches(url, document) {
-    return isClaudeHost(url) || /claude/i.test(document.title);
+    // A title alone also matches pages about Claude, so require Claude's transcript markup too.
+    return isClaudeHost(url) || (/claude/i.test(document.title) && Boolean(document.querySelector(CLAUDE_MARKUP)));
   },
   async extract(document) {
     const conversation = createBaseConversation("claude", document);
