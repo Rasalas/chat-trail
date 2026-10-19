@@ -1,26 +1,28 @@
 import "./style.css";
 import { createEvidencePack } from "../exporters/evidence";
-import { applyExportOptions } from "../exporters/filter";
+import { applyExportOptions, filterMessage, redactBlock } from "../exporters/filter";
 import { exportHtml } from "../exporters/html";
 import { exportJson } from "../exporters/json";
 import { exportMarkdown } from "../exporters/markdown";
+import { intermediateAssistantFlags } from "../exporters/turns";
 import { blobFromText, downloadBlob } from "../shared/download";
-import { redactText } from "../shared/redaction";
 import { escapeHtml } from "../shared/strings";
 import { slugify } from "../shared/strings";
-import { sha256Hex, stableId } from "../shared/hash";
-import { withBusy } from "../shared/ui";
 import { ChatMessage, ConversationExport, ContentBlock, DEFAULT_EXPORT_OPTIONS, ExportOptions, RuntimeResponse } from "../shared/types";
 import { contentToMarkdown, renderMarkdown } from "../shared/markdown";
 import { sanitizeContentHtml } from "../shared/sanitize";
 import { captureWarning } from "../shared/capture";
 import { readReviewSession, updateReviewCapture } from "../shared/review-session";
+import { conversationFromClipboard } from "./clipboard";
 import { captureOriginalEvidence } from "./original-evidence";
+import { printHtml } from "./print";
 import { captureInSourceTab, fetchCapture } from "./source-capture";
 
 const reviewSessionId = new URL(document.location.href).searchParams.get("session");
 const originalPageInput = document.querySelector<HTMLInputElement>("#include-original-page")!;
 const captureNotice = document.querySelector<HTMLElement>("#capture-notice")!;
+const busyLine = document.querySelector<HTMLElement>("#busy-line")!;
+const errorLine = document.querySelector<HTMLElement>("#error-line")!;
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const chatTitle = document.querySelector<HTMLElement>("#chat-title")!;
@@ -33,8 +35,10 @@ const redactButton = document.querySelector<HTMLButtonElement>("#redact-now")!;
 const clipboardButton = document.querySelector<HTMLButtonElement>("#clipboard-import")!;
 const clipboardNote = document.querySelector<HTMLElement>("#clipboard-note")!;
 const optionInputs = [...document.querySelectorAll<HTMLInputElement>("[data-option]")];
+const providerCopyInput = optionInputs.find((input) => input.dataset.option === "useProviderCopy");
 const exportButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-export]")];
 const copyButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-copy]")];
+const popovers = [...document.querySelectorAll<HTMLDetailsElement>("details.popover")];
 const actionButtons = [
   refreshButton,
   clipboardButton,
@@ -45,17 +49,39 @@ const actionButtons = [
   ...exportButtons
 ];
 
+type ExportFormat = "md" | "json" | "html" | "print" | "zip";
+
+interface PreviewEntry {
+  content: ChatMessage["content"];
+  optionsKey: string;
+  message: ChatMessage;
+  html: string;
+}
+
+interface RowEntry {
+  row: HTMLElement;
+  state: "shown" | "removed" | "editing";
+  preview: PreviewEntry | null;
+}
+
 let conversation: ConversationExport | null = null;
 const selectedIds = new Set<string>();
 let editingId: string | null = null;
+// Edits and redactions; exclusions are derived from selectedIds.
+let modified = false;
+let redactionUndo: Map<string, ChatMessage["content"]> | null = null;
+const previewCache = new Map<string, PreviewEntry>();
+const rowCache = new Map<string, RowEntry>();
 const OPTIONS_STORAGE_KEY = "exportOptions";
 let toastTimer: number | undefined;
 
-refreshButton.addEventListener("click", () => void recapture());
+refreshButton.addEventListener("click", () => {
+  if (confirmDiscard("Refreshing")) void recapture();
+});
 exportButtons.forEach((button) =>
   button.addEventListener("click", () => {
     closePopovers();
-    void exportCurrent(button.dataset.export as "md" | "json" | "html" | "print" | "zip");
+    void exportCurrent(button.dataset.export as ExportFormat);
   })
 );
 copyButtons.forEach((button) =>
@@ -67,31 +93,58 @@ copyButtons.forEach((button) =>
 selectAllButton.addEventListener("click", () => selectMessages("all"));
 selectNoneButton.addEventListener("click", () => selectMessages("none"));
 redactButton.addEventListener("click", redactVisibleText);
-clipboardButton.addEventListener("click", () => void importClipboard());
-optionInputs.forEach((input) =>
-  input.addEventListener("change", () => {
-    persistOptions();
-    render();
+clipboardButton.addEventListener("click", () => {
+  if (confirmDiscard("Importing from the clipboard")) void importClipboard();
+});
+optionInputs
+  .filter((input) => input !== providerCopyInput)
+  .forEach((input) =>
+    input.addEventListener("change", () => {
+      persistOptions();
+      render();
+    })
+  );
+providerCopyInput?.addEventListener("change", () => {
+  if (!confirmDiscard("Changing the extraction method")) {
+    providerCopyInput.checked = !providerCopyInput.checked;
+    return;
+  }
+  persistOptions();
+  syncClipboardNote();
+  void recapture();
+});
+
+popovers.forEach((popover) =>
+  popover.addEventListener("toggle", () => {
+    if (!popover.open) return;
+    popovers.forEach((other) => {
+      if (other !== popover) other.open = false;
+    });
   })
 );
-optionInputs
-  .find((input) => input.dataset.option === "useProviderCopy")
-  ?.addEventListener("change", () => {
-    syncClipboardNote();
-    void recapture();
-  });
 document.addEventListener("click", (event) => {
-  const target = event.target as HTMLElement;
-  document.querySelectorAll("details.popover[open]").forEach((popover) => {
-    if (!popover.contains(target)) popover.removeAttribute("open");
+  const target = event.target as Node;
+  popovers.forEach((popover) => {
+    if (popover.open && !popover.contains(target)) popover.open = false;
   });
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const open = popovers.find((popover) => popover.open);
+  if (!open) return;
+  event.preventDefault();
+  open.open = false;
+  open.querySelector<HTMLElement>("summary")?.focus();
 });
 
 syncClipboardNote();
+showLoading("Loading capture...");
 void restoreOptions().then(loadStoredCapture);
 
 function closePopovers(): void {
-  document.querySelectorAll("details.popover[open]").forEach((popover) => popover.removeAttribute("open"));
+  popovers.forEach((popover) => {
+    popover.open = false;
+  });
 }
 
 async function restoreOptions(): Promise<void> {
@@ -110,12 +163,54 @@ function persistOptions(): void {
 }
 
 function syncClipboardNote(): void {
-  const useProviderCopy = optionInputs.find((input) => input.dataset.option === "useProviderCopy");
-  clipboardNote.hidden = !useProviderCopy?.checked;
+  clipboardNote.hidden = !providerCopyInput?.checked;
+}
+
+function hasUnsavedWork(): boolean {
+  if (!conversation) return false;
+  return modified || selectedIds.size < conversation.messages.length;
+}
+
+function confirmDiscard(action: string): boolean {
+  if (!hasUnsavedWork()) return true;
+  return window.confirm(`${action} replaces the current review. Your edits, exclusions and redactions will be lost. Continue?`);
+}
+
+async function runBusy(label: string, task: () => Promise<void>): Promise<void> {
+  actionButtons.forEach((button) => {
+    button.disabled = true;
+  });
+  showError(undefined);
+  busyLine.textContent = label;
+  busyLine.hidden = false;
+  try {
+    await task();
+  } catch (error) {
+    showError(error instanceof Error ? error.message : String(error));
+    if (!conversation) messagesRoot.innerHTML = `<div class="empty">No conversation loaded.</div>`;
+  } finally {
+    busyLine.hidden = true;
+    actionButtons.forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
+function showError(message: string | undefined): void {
+  errorLine.textContent = message ?? "";
+  errorLine.hidden = !message;
+}
+
+function showLoading(label: string): void {
+  if (conversation) return;
+  const empty = document.createElement("div");
+  empty.className = "empty loading";
+  empty.textContent = label;
+  messagesRoot.replaceChildren(empty);
 }
 
 async function loadStoredCapture(): Promise<void> {
-  await withBusy(actionButtons, showSummary, "Loading capture...", async () => {
+  await runBusy("Loading capture...", async () => {
     applyResponse(await fetchCapture(await readReviewSession(reviewSessionId)));
   });
 }
@@ -125,7 +220,8 @@ async function recapture(): Promise<void> {
   const label = options.useProviderCopy
     ? "Capturing in the source tab... (copy buttons are clicked; the clipboard is read and restored)"
     : "Capturing in the source tab...";
-  await withBusy(actionButtons, showSummary, label, async () => {
+  showLoading(label);
+  await runBusy(label, async () => {
     const session = await readReviewSession(reviewSessionId);
     const captureId = await captureInSourceTab(session.sourceTabId, options.useProviderCopy);
     await updateReviewCapture(reviewSessionId!, captureId);
@@ -135,10 +231,18 @@ async function recapture(): Promise<void> {
 
 function applyResponse(response: RuntimeResponse): void {
   if (!response.ok) throw new Error(response.error);
-  conversation = response.conversation;
+  setConversation(response.conversation);
+}
+
+function setConversation(next: ConversationExport): void {
+  conversation = next;
   selectedIds.clear();
   conversation.messages.forEach((message) => selectedIds.add(message.id));
   editingId = null;
+  modified = false;
+  redactionUndo = null;
+  previewCache.clear();
+  rowCache.clear();
   originalPageInput.checked = false;
   render();
 }
@@ -153,17 +257,77 @@ function render(): void {
   captureNotice.textContent = warning ?? "";
   captureNotice.hidden = !warning;
   originalPageInput.disabled = conversation.source.provider === "clipboard";
-  const options = readOptions();
-  const preview = applyExportOptions(pickSelectedMessages(), options);
-  chatTitle.textContent = conversation.source.title || "Chat Export";
-  summary.textContent = metaLine(conversation, preview.messages.length);
+  const title = conversation.source.title || "Chat Export";
+  chatTitle.textContent = title;
+  document.title = `${title} – Chat Trail`;
 
-  if (preview.messages.length === 0) {
-    messagesRoot.innerHTML = `<div class="empty">No messages selected for export.</div>`;
-    return;
+  const shown = previewEntries(conversation.messages, readOptions());
+  const meta = metaLine(conversation, shown.size);
+  summary.textContent = meta;
+  summary.title = meta;
+
+  const rows: HTMLElement[] = [];
+  const used = new Set<string>();
+  for (const message of conversation.messages) {
+    const included = selectedIds.has(message.id);
+    const preview = shown.get(message.id) ?? null;
+    // Included messages that the options drop (e.g. image-only without images) are not shown.
+    if (included && !preview) continue;
+    rows.push(rowFor(message, preview));
+    used.add(message.id);
+  }
+  for (const id of rowCache.keys()) {
+    if (!used.has(id)) rowCache.delete(id);
   }
 
-  messagesRoot.replaceChildren(...preview.messages.map(messageNode));
+  if (rows.length === 0) {
+    messagesRoot.innerHTML = `<div class="empty">No messages to show.</div>`;
+    return;
+  }
+  reconcileChildren(messagesRoot, rows);
+}
+
+// Mirrors applyExportOptions for the selected messages without cloning the conversation.
+function previewEntries(messages: ChatMessage[], options: ExportOptions): Map<string, PreviewEntry> {
+  const optionsKey = `${options.redactSecrets}|${options.includeImages}`;
+  const entries: PreviewEntry[] = [];
+  for (const message of messages) {
+    if (!selectedIds.has(message.id)) continue;
+    const entry = previewFor(message, optionsKey, options);
+    if (entry.message.content.length > 0) entries.push(entry);
+  }
+  const interim = options.collapseIntermediate ? [] : intermediateAssistantFlags(entries.map((entry) => entry.message));
+  return new Map(entries.filter((_, index) => !interim[index]).map((entry) => [entry.message.id, entry]));
+}
+
+// Cached by content identity: edits and redactions replace a message's content array.
+function previewFor(message: ChatMessage, optionsKey: string, options: ExportOptions): PreviewEntry {
+  const cached = previewCache.get(message.id);
+  if (cached && cached.content === message.content && cached.optionsKey === optionsKey) return cached;
+  const filtered = filterMessage(message, options);
+  const entry = { content: message.content, optionsKey, message: filtered, html: sanitizeContentHtml(messageHtml(filtered)) };
+  previewCache.set(message.id, entry);
+  return entry;
+}
+
+function rowFor(message: ChatMessage, preview: PreviewEntry | null): HTMLElement {
+  const state: RowEntry["state"] = !preview ? "removed" : editingId === message.id ? "editing" : "shown";
+  const cached = rowCache.get(message.id);
+  if (cached && cached.state === state && cached.preview === preview) return cached.row;
+  const row = messageNode(message, state, preview);
+  rowCache.set(message.id, { row, state, preview });
+  return row;
+}
+
+// Reuses existing row nodes so images are not reloaded and the scroll position stays put.
+function reconcileChildren(parent: HTMLElement, nodes: HTMLElement[]): void {
+  const wanted = new Set<Node>(nodes);
+  for (const child of [...parent.childNodes]) {
+    if (!wanted.has(child)) child.remove();
+  }
+  nodes.forEach((node, index) => {
+    if (parent.childNodes[index] !== node) parent.insertBefore(node, parent.childNodes[index] ?? null);
+  });
 }
 
 function metaLine(conversation: ConversationExport, count: number): string {
@@ -180,18 +344,17 @@ function metaLine(conversation: ConversationExport, count: number): string {
   return parts.join(" · ");
 }
 
-function messageNode(message: ChatMessage): HTMLElement {
-  const included = selectedIds.has(message.id);
+function messageNode(message: ChatMessage, state: RowEntry["state"], preview: PreviewEntry | null): HTMLElement {
   const row = document.createElement("div");
-  row.className = `message-row ${message.role} ${message.kind ?? ""} ${included ? "included" : "removed"}`;
+  row.className = `message-row ${message.role} ${message.kind ?? ""} ${state === "removed" ? "removed" : "included"}`;
 
-  if (!included) {
+  if (state === "removed") {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "message-restore";
     restore.textContent = message.kind === "document"
-      ? "Document section removed — click to restore"
-      : `${message.role} message removed — click to restore`;
+      ? "Document section excluded — click to include again"
+      : `${message.role} message excluded — click to include again`;
     restore.title = "Include again";
     restore.addEventListener("click", () => {
       selectedIds.add(message.id);
@@ -201,14 +364,14 @@ function messageNode(message: ChatMessage): HTMLElement {
     return row;
   }
 
-  if (editingId === message.id) {
+  if (state === "editing") {
     row.append(editorNode(message));
     return row;
   }
 
   const body = document.createElement("div");
   body.className = "message-body";
-  body.innerHTML = sanitizeContentHtml(messageHtml(message));
+  body.innerHTML = preview!.html;
   body.querySelectorAll("img").forEach((img) => {
     img.addEventListener("error", () => {
       const fallback = document.createElement("span");
@@ -236,8 +399,8 @@ function messageNode(message: ChatMessage): HTMLElement {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "message-remove";
-  remove.title = "Remove from export";
-  remove.setAttribute("aria-label", "Remove from export");
+  remove.title = "Exclude from export";
+  remove.setAttribute("aria-label", "Exclude from export");
   remove.innerHTML =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></svg>';
   remove.addEventListener("click", () => {
@@ -257,6 +420,7 @@ function editorNode(message: ChatMessage): HTMLElement {
   const textarea = document.createElement("textarea");
   textarea.value = contentToMarkdown(message.content);
   textarea.spellcheck = false;
+  textarea.setAttribute("aria-label", "Message markdown");
   const autoGrow = () => {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 640)}px`;
@@ -269,6 +433,7 @@ function editorNode(message: ChatMessage): HTMLElement {
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       editingId = null;
       render();
     }
@@ -306,7 +471,11 @@ function editorNode(message: ChatMessage): HTMLElement {
 
 function saveEdit(message: ChatMessage, value: string): void {
   const target = conversation?.messages.find((candidate) => candidate.id === message.id);
-  if (target) target.content = [{ type: "text", text: value }];
+  if (target && value !== contentToMarkdown(target.content)) {
+    target.content = [{ type: "text", text: value }];
+    modified = true;
+    redactionUndo = null;
+  }
   editingId = null;
   render();
 }
@@ -349,9 +518,10 @@ function blockToPlainText(block: ContentBlock): string {
   return [block.alt, block.filename, block.src].filter(Boolean).join(" ");
 }
 
-async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): Promise<void> {
+async function exportCurrent(format: ExportFormat): Promise<void> {
   if (!conversation) return;
-  await withBusy(actionButtons, showSummary, `Preparing ${format.toUpperCase()}...`, async () => {
+  const label = format === "print" ? "Preparing print view..." : `Preparing ${format.toUpperCase()}...`;
+  await runBusy(label, async () => {
     const prepared = applyExportOptions(pickSelectedMessages(), readOptions());
     const baseName = slugify(prepared.source.title);
 
@@ -362,7 +532,8 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
     } else if (format === "html") {
       downloadBlob(blobFromText(exportHtml(prepared), "text/html;charset=utf-8"), `${baseName}.html`);
     } else if (format === "print") {
-      openPrintView(exportHtml(prepared));
+      await printHtml(document, exportHtml(prepared));
+      return;
     } else {
       const includeOriginalPage = originalPageInput.checked && prepared.source.provider !== "clipboard";
       originalPageInput.checked = false;
@@ -380,47 +551,47 @@ async function exportCurrent(format: "md" | "json" | "html" | "print" | "zip"): 
       downloadBlob(zip, `${baseName}-evidence.zip`);
     }
 
-    restoreMeta();
     showToast(`${format.toUpperCase()} exported.`);
   });
 }
 
 async function copyExport(format: "md" | "json" | "html"): Promise<void> {
   if (!conversation) return;
-  await withBusy(actionButtons, showSummary, `Copying ${format.toUpperCase()}...`, async () => {
+  await runBusy(`Copying ${format.toUpperCase()}...`, async () => {
     const prepared = applyExportOptions(pickSelectedMessages(), readOptions());
     const content = format === "md" ? exportMarkdown(prepared) : format === "json" ? exportJson(prepared) : exportHtml(prepared);
     await navigator.clipboard.writeText(content);
-    restoreMeta();
     showToast(`${format.toUpperCase()} copied to clipboard.`);
   });
 }
 
-function restoreMeta(): void {
-  if (!conversation) return;
-  const preview = applyExportOptions(pickSelectedMessages(), readOptions());
-  summary.textContent = metaLine(conversation, preview.messages.length);
-}
-
-function showToast(message: string): void {
+function showToast(message: string, action?: { label: string; run(): void }): void {
   if (toastTimer) window.clearTimeout(toastTimer);
-  toast.textContent = message;
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.replaceChildren(text);
+  if (action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toast-action";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      toast.hidden = true;
+      action.run();
+    });
+    toast.append(button);
+  }
   toast.hidden = false;
   toastTimer = window.setTimeout(() => {
     toast.hidden = true;
-  }, 2600);
+  }, action ? 10_000 : 2600);
 }
 
 async function importClipboard(): Promise<void> {
-  await withBusy(actionButtons, showSummary, "Reading clipboard text...", async () => {
+  await runBusy("Reading clipboard text...", async () => {
     const text = await navigator.clipboard.readText();
     if (!text.trim()) throw new Error("Clipboard is empty.");
-    conversation = await conversationFromClipboard(text);
-    editingId = null;
-    originalPageInput.checked = false;
-    selectedIds.clear();
-    conversation.messages.forEach((message) => selectedIds.add(message.id));
-    render();
+    setConversation(await conversationFromClipboard(text));
   });
 }
 
@@ -448,90 +619,45 @@ function selectMessages(mode: "all" | "none"): void {
   render();
 }
 
+// Redacts block by block so code, tables, quotes and images keep their structure.
 function redactVisibleText(): void {
   if (!conversation) return;
-  conversation = structuredClone(conversation);
-  conversation.messages = conversation.messages.map((message): ChatMessage => {
-    const current = message.content.map(blockToPlainText).join("\n\n");
-    return { ...message, content: [{ type: "text", text: redactText(current) }] };
-  });
+  closePopovers();
+  const previous = new Map<string, ChatMessage["content"]>();
+  for (const message of conversation.messages) {
+    const content = message.content.map(redactBlock);
+    if (!content.some((block, index) => blockChanged(message.content[index], block))) continue;
+    previous.set(message.id, message.content);
+    message.content = content;
+  }
+  if (previous.size === 0) {
+    showToast("No secrets found in the text.");
+    return;
+  }
+  modified = true;
+  redactionUndo = previous;
   render();
+  showToast(`Redacted secrets in ${previous.size} message${previous.size === 1 ? "" : "s"}.`, { label: "Undo", run: undoRedaction });
 }
 
-function openPrintView(html: string): void {
-  const blob = blobFromText(
-    html.replace("</body>", "<script>window.addEventListener('load', () => setTimeout(() => window.print(), 150));</script></body>"),
-    "text/html;charset=utf-8"
-  );
-  window.open(URL.createObjectURL(blob), "_blank", "noopener");
-}
-
-async function conversationFromClipboard(text: string): Promise<ConversationExport> {
-  const chunks = splitClipboardMessages(text);
-  const messages: ChatMessage[] = [];
-
-  for (const [index, chunk] of chunks.entries()) {
-    const role = inferClipboardRole(chunk.role, index);
-    const body = chunk.text.trim();
-    messages.push({
-      id: `${role}-${index}-${stableId(role, body)}`,
-      role,
-      content: [{ type: "text", text: body }],
-      metadata: {
-        index,
-        visibleTextHash: await sha256Hex(body)
-      }
-    });
+function undoRedaction(): void {
+  if (!conversation || !redactionUndo) return;
+  for (const message of conversation.messages) {
+    const content = redactionUndo.get(message.id);
+    if (content) message.content = content;
   }
-
-  return {
-    schema_version: "1.0",
-    source: {
-      provider: "clipboard",
-      url: "",
-      title: "Clipboard Chat",
-      captured_at: new Date().toISOString()
-    },
-    messages,
-    artifacts: [],
-    manifest: {
-      extension_version: chrome.runtime.getManifest().version,
-      hashes: {}
-    }
-  };
+  redactionUndo = null;
+  render();
+  showToast("Redaction undone.");
 }
 
-function splitClipboardMessages(text: string): Array<{ role?: string; text: string }> {
-  const blocks = text
-    .split(/\n(?=(?:user|you|human|assistant|chatgpt|claude|ai)\s*:)/gi)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  if (blocks.length > 1) {
-    return blocks.map((block) => {
-      const match = block.match(/^([^:\n]{1,24})\s*:\s*([\s\S]*)$/);
-      return match ? { role: match[1], text: match[2] } : { text: block };
-    });
-  }
-
-  return text
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => ({ text: block }));
-}
-
-function inferClipboardRole(role: string | undefined, index: number): ChatMessage["role"] {
-  const value = role?.toLowerCase() ?? "";
-  if (/user|you|human/.test(value)) return "user";
-  if (/assistant|chatgpt|claude|ai/.test(value)) return "assistant";
-  return index % 2 === 0 ? "user" : "assistant";
+function blockChanged(before: ContentBlock, after: ContentBlock): boolean {
+  if (before.type === "table" && after.type === "table") return before.markdown !== after.markdown;
+  if (before.type === "image" && after.type === "image") return before.alt !== after.alt || before.filename !== after.filename;
+  if ("text" in before && "text" in after) return before.text !== after.text;
+  return false;
 }
 
 async function getSourceTabId(): Promise<number> {
   return (await readReviewSession(reviewSessionId)).sourceTabId;
-}
-
-function showSummary(text: string): void {
-  summary.textContent = text;
 }

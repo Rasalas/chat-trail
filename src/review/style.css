@@ -13,6 +13,10 @@
   --code-bg: #f0eee9;
   --quote-bar: #c9c4b8;
   --hover-veil: rgba(0, 0, 0, 0.04);
+  --notice-fg: #7a4600;
+  --notice-bg: #fff4d6;
+  --notice-border: #d9a441;
+  --error-bg: #fbe9e6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +34,10 @@
     --code-bg: #232629;
     --quote-bar: #4a4d50;
     --hover-veil: rgba(255, 255, 255, 0.05);
+    --notice-fg: #f2c879;
+    --notice-bg: #2e2617;
+    --notice-border: #6b5321;
+    --error-bg: #33201d;
   }
 }
 
@@ -610,4 +618,85 @@ details.popover[open] > summary.primary {
   }
 }
 
-.capture-notice { padding: 12px; border: 1px solid #b36b00; border-radius: 8px; color: #8a4f00; background: #fff4d6; }
+.busy-line,
+.error-line,
+.capture-notice {
+  max-width: 860px;
+  margin: 10px auto 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.busy-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.busy-line::before,
+.empty.loading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.empty.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.error-line {
+  border: 1px solid var(--danger);
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+.capture-notice {
+  border: 1px solid var(--notice-border);
+  background: var(--notice-bg);
+  color: var(--notice-fg);
+}
+
+.busy-line[hidden],
+.error-line[hidden],
+.capture-notice[hidden] {
+  display: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toast-action {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busy-line::before,
+  .empty.loading::before {
+    animation: none;
+  }
+}

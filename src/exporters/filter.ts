@@ -23,7 +23,7 @@ export function applyExportOptions(conversation: ConversationExport, options: Ex
   return filtered;
 }
 
-function filterMessage(message: ChatMessage, options: ExportOptions): ChatMessage {
+export function filterMessage(message: ChatMessage, options: ExportOptions): ChatMessage {
   return {
     ...message,
     content: message.content
@@ -32,7 +32,7 @@ function filterMessage(message: ChatMessage, options: ExportOptions): ChatMessag
   };
 }
 
-function redactBlock(block: ContentBlock): ContentBlock {
+export function redactBlock(block: ContentBlock): ContentBlock {
   if (block.type === "text" || block.type === "code" || block.type === "quote") {
     return { ...block, text: redactText(block.text) };
   }

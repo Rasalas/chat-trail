@@ -23,6 +23,20 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
               </summary>
               <div class="popover-panel">
+                <h3>Content</h3>
+                <p class="option-note">Applies to the preview and every export.</p>
+                <label><input type="checkbox" data-option="collapseIntermediate" checked /> Interim replies</label>
+                <label><input type="checkbox" data-option="includeImages" checked /> Images</label>
+                <label><input type="checkbox" data-option="includeMetadata" checked /> Metadata</label>
+                <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
+                <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
+                <h3>Messages</h3>
+                <div class="popover-row">
+                  <button id="select-all" type="button">Include all</button>
+                  <button id="select-none" type="button">Exclude all</button>
+                </div>
+                <button id="redact-now" type="button">Redact secrets in text now</button>
+                <p class="option-note">Rewrites the transcript so you can check and edit the result. Undo is offered right after.</p>
                 <h3>Extraction</h3>
                 <label><input type="checkbox" data-option="useProviderCopy" /> Provider copy buttons</label>
                 <p id="clipboard-note" class="option-note clipboard-note" hidden>
@@ -30,12 +44,6 @@
                   clipboard, then restore its previous content. DOM extraction remains the default.
                 </p>
                 <button id="clipboard-import" type="button">Import from clipboard</button>
-                <h3>Messages</h3>
-                <div class="popover-row">
-                  <button id="select-all" type="button">Show all</button>
-                  <button id="select-none" type="button">Remove all</button>
-                </div>
-                <button id="redact-now" type="button">Redact visible text</button>
               </div>
             </details>
 
@@ -82,12 +90,6 @@
                 </button>
                 <label><input type="checkbox" id="include-original-page" /> Include original page in ZIP (unredacted)</label>
                 <p class="option-note">Adds a screenshot and page snapshot, including removed messages and text you redacted or edited. Applies to the next ZIP only.</p>
-                <h3>Options</h3>
-                <label><input type="checkbox" data-option="collapseIntermediate" checked /> Interim replies</label>
-                <label><input type="checkbox" data-option="includeImages" checked /> Images</label>
-                <label><input type="checkbox" data-option="includeMetadata" checked /> Metadata</label>
-                <label><input type="checkbox" data-option="anonymizeUrl" /> Anonymize URL</label>
-                <label><input type="checkbox" data-option="redactSecrets" checked /> Redact secrets</label>
               </div>
             </details>
           </div>
@@ -95,12 +97,14 @@
 
         <div class="title-block">
           <h1 id="chat-title">Review</h1>
-          <p id="summary" class="meta">Waiting for the active tab.</p>
+          <p id="summary" class="meta"></p>
         </div>
       </header>
 
+      <p id="busy-line" class="busy-line" role="status" aria-live="polite" hidden></p>
+      <p id="error-line" class="error-line" role="alert" hidden></p>
       <p id="capture-notice" class="capture-notice" role="alert" hidden></p>
-      <section class="messages" id="messages" aria-live="polite"></section>
+      <section class="messages" id="messages"></section>
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <script type="module" src="./index.ts"></script>
