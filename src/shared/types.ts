@@ -75,6 +75,14 @@ export interface AdapterCapabilities {
   attachments: boolean;
 }
 
+/** How the provider's thread behaves while scrolling; unknown pages assume both. */
+export interface ScrollBehaviour {
+  /** Reaching the top fetches and prepends older turns. */
+  loadsOlderOnTop: boolean;
+  /** Only turns near the viewport are mounted. */
+  virtualised: boolean;
+}
+
 export interface ChatAdapter {
   id: ProviderId;
   label: string;
@@ -83,6 +91,7 @@ export interface ChatAdapter {
   matches(url: URL, document: Document): boolean;
   extract(document: Document): Promise<ConversationExport>;
   capabilities: AdapterCapabilities;
+  scroll?: ScrollBehaviour;
   /** Rendered message roots, in document order. Drives scroller detection and change tracking during scroll capture. */
   messageElements?(document: Document): Element[];
 }

@@ -36,6 +36,15 @@ Verified live on 2026-08-25 — re-verify when a provider changes its DOM:
 | Gemini | yes, `batchexecute rpcids=hNvQHb`, **>1 s** (hence `LOAD_CONFIRM_WAIT_MS`) | no | `.conversation-container[id]` + role |
 | Claude | no (whole thread loaded) | yes, hard (9–21 of 256 rows) | `[data-testid='transcript-row'][data-index]` |
 
+The first two columns are encoded per adapter as `scroll: { loadsOlderOnTop, virtualised }`: no load phase when
+the provider does not paginate (Claude), a single extraction instead of the walk when it does not virtualise
+(Gemini). Adapters without `scroll` (unknown pages, the other hosted providers) get both phases. Change a flag only
+after re-verifying the provider; a wrong `false` silently drops messages.
+
+The walk budget follows the thread height (`ceil(scrollHeight / stride) * 2 + 20`, hard cap 3000) and stops early
+after 3 steps in which scrolling moved nothing; both end as `walk-limit`. Within one capture each image src is
+converted to a data URL once (`beginImageCache`/`endImageCache` in `src/normalizer/dom.ts`).
+
 A single ChatGPT turn can contain several message nodes (e.g. model `bidi`) — extract all of them.
 
 ## Re-verifying against a real page

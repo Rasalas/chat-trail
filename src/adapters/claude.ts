@@ -17,6 +17,8 @@ export const claudeAdapter: ChatAdapter = {
     artifacts: true,
     attachments: true
   },
+  // The whole thread is loaded up front; only the rows are virtualised.
+  scroll: { loadsOlderOnTop: false, virtualised: true },
   matchesHost: isClaudeHost,
   matches(url, document) {
     // A title alone also matches pages about Claude, so require Claude's transcript markup too.

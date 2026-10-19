@@ -1,4 +1,4 @@
-import { ChatAdapter, ChatMessage, ProviderId } from "../shared/types";
+import { ChatAdapter, ChatMessage, ProviderId, ScrollBehaviour } from "../shared/types";
 import { compactWhitespace } from "../shared/strings";
 import { stableId } from "../shared/hash";
 import {
@@ -24,6 +24,7 @@ interface HostedProvider {
   thoughtsSelectors?: string[];
   /** Stable per-message id from the provider DOM; used to dedupe/merge scroll snapshots. */
   messageId?: (element: Element, role: "user" | "assistant") => string | undefined;
+  scroll?: ScrollBehaviour;
 }
 
 const providers: HostedProvider[] = [
@@ -41,7 +42,9 @@ const providers: HostedProvider[] = [
     messageId: (element, role) => {
       const id = element.closest(".conversation-container")?.id;
       return id ? `${id}:${role}` : undefined;
-    }
+    },
+    // Pages older turns in on top (slowly) but keeps every loaded turn mounted.
+    scroll: { loadsOlderOnTop: true, virtualised: false }
   },
   { id: "perplexity", label: "Perplexity", hosts: [/(^|\.)perplexity\.ai$/], modelPattern: /sonar|perplexity|gpt|claude/i },
   { id: "copilot", label: "Copilot", hosts: [/(^|\.)copilot\.microsoft\.com$/, /(^|\.)bing\.com$/], modelPattern: /copilot|gpt/i },
@@ -60,6 +63,7 @@ export const hostedGenericAdapters: ChatAdapter[] = providers.map((provider) => 
     artifacts: false,
     attachments: true
   },
+  scroll: provider.scroll,
   matchesHost: (url) => provider.hosts.some((host) => host.test(url.hostname)),
   matches: (url) => provider.hosts.some((host) => host.test(url.hostname)),
   async extract(document) {
