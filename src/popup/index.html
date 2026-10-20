@@ -8,14 +8,14 @@
   <body>
     <main class="popup-shell">
       <section class="brand">
-        <a class="brand-link" href="https://chromewebstore.google.com/detail/chat-trail/bagpiboaacjkacgmejnnieikoaloeoji" target="_blank" rel="noopener noreferrer" title="Open Chat Trail in the Chrome Web Store">
+        <h1 class="brand-title">
           <img class="brand-mark" src="/icons/icon-32.png" alt="" />
           <span>Chat Trail</span>
-        </a>
-        <span id="status-dot" class="status-dot" aria-label="Status"></span>
+        </h1>
+        <span id="status-dot" class="status-dot" aria-hidden="true"></span>
       </section>
 
-      <p id="status" class="status">Ready to read the active tab.</p>
+      <p id="status" class="status" role="status" aria-live="polite">Ready to read the active tab.</p>
 
       <section class="actions">
         <div class="markdown-actions">
@@ -37,6 +37,9 @@
         </button>
       </section>
 
+      <footer class="popup-footer">
+        <a href="https://chromewebstore.google.com/detail/chat-trail/bagpiboaacjkacgmejnnieikoaloeoji" target="_blank" rel="noopener noreferrer">Rate or report a problem</a>
+      </footer>
     </main>
     <script type="module" src="./index.ts"></script>
   </body>

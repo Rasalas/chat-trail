@@ -103,7 +103,8 @@ describe("review workflow", () => {
   it("exports the reviewed selection without requesting original page evidence", async () => {
     await startReview();
     document.querySelectorAll<HTMLButtonElement>(".message-remove")[1].click();
-    expect(document.querySelectorAll(".message-row")).toHaveLength(2);
+    expect(document.querySelectorAll(".message-row.included")).toHaveLength(2);
+    expect(document.querySelectorAll(".message-row.removed .message-restore")).toHaveLength(1);
     click('[data-export="zip"]');
     await vi.waitFor(() => expect(download).toHaveBeenCalledOnce());
     const zip = new TextDecoder().decode(await download.mock.calls[0][0].arrayBuffer());
@@ -128,7 +129,7 @@ describe("review workflow", () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({ id: 42, windowId: 1, url: "https://example.com/chat/other" } as chrome.tabs.Tab);
     document.querySelector<HTMLInputElement>("#include-original-page")!.checked = true;
     click('[data-export="zip"]');
-    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toContain("source page has changed"));
+    await vi.waitFor(() => expect(document.querySelector("#error-line")!.textContent).toContain("source page has changed"));
     expect(download).not.toHaveBeenCalled();
     expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
   });
@@ -137,7 +138,7 @@ describe("review workflow", () => {
     await startReview();
     vi.mocked(chrome.tabs.get).mockRejectedValue(new Error("No tab with id: 42."));
     click("#refresh");
-    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe(SOURCE_CLOSED));
+    await vi.waitFor(() => expect(document.querySelector("#error-line")!.textContent).toBe(SOURCE_CLOSED));
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
     expect(document.querySelectorAll(".message-row")).toHaveLength(3);
   });
@@ -148,7 +149,7 @@ describe("review workflow", () => {
     window.history.replaceState(null, "", `/?session=${sessionId}`);
     vi.mocked(chrome.tabs.sendMessage).mockRejectedValue(new Error("Could not establish connection. Receiving end does not exist."));
     await import("./index");
-    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe(SOURCE_RELOADED));
+    await vi.waitFor(() => expect(document.querySelector("#error-line")!.textContent).toBe(SOURCE_RELOADED));
   });
 
   it("keeps the current review and returns to it when the capture is cancelled", async () => {
@@ -156,8 +157,90 @@ describe("review workflow", () => {
     vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce({ ok: false, error: "Capture cancelled." });
     vi.mocked(chrome.tabs.update).mockClear();
     click("#refresh");
-    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe("Capture cancelled."));
+    await vi.waitFor(() => expect(document.querySelector("#error-line")!.textContent).toBe("Capture cancelled."));
     expect(vi.mocked(chrome.tabs.update).mock.calls.at(-1)?.[0]).toBe(100);
     expect(document.querySelectorAll(".message-row")).toHaveLength(3);
+  });
+});
+
+describe("review interactions", () => {
+  it("restores a single excluded message and keeps the other rows", async () => {
+    await startReview();
+    const firstRow = document.querySelector(".message-row");
+    document.querySelectorAll<HTMLButtonElement>(".message-remove")[1].click();
+    expect(document.querySelector("#summary")!.textContent).toMatch(/^2 of 3 messages/);
+    expect(document.querySelector(".message-row")).toBe(firstRow);
+    click(".message-restore");
+    expect(document.querySelectorAll(".message-row.included")).toHaveLength(3);
+    expect(document.querySelector(".message-row")).toBe(firstRow);
+  });
+
+  it("asks before a refresh discards exclusions", async () => {
+    await startReview();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    click("#refresh");
+    expect(confirm).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>("#refresh")!.disabled).toBe(false));
+
+    document.querySelectorAll<HTMLButtonElement>(".message-remove")[0].click();
+    click("#refresh");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(3);
+
+    confirm.mockReturnValue(true);
+    click("#refresh");
+    await vi.waitFor(() => expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(5));
+    confirm.mockRestore();
+  });
+
+  it("redacts block by block, keeps code blocks and can undo", async () => {
+    const withCode = makeConversation([
+      makeMessage("user", 0, [{ type: "text", text: "Fix my config" }]),
+      makeMessage("assistant", 1, [
+        { type: "text", text: "Mail person@example.com" },
+        { type: "code", language: "ini", text: "api_key = abcd1234efgh5678" }
+      ])
+    ]);
+    vi.mocked(chrome.tabs.sendMessage).mockImplementation(async () => ({ ok: true, conversation: structuredClone(withCode), adapterId: "generic", adapterLabel: "Test" }));
+    const { openReviewSession } = await import("../shared/review-session");
+    window.history.replaceState(null, "", `/?session=${await openReviewSession(42, "cap-initial")}`);
+    await import("./index");
+    await vi.waitFor(() => expect(document.querySelectorAll(".message-row")).toHaveLength(2));
+    const redactOption = document.querySelector<HTMLInputElement>('[data-option="redactSecrets"]')!;
+    redactOption.checked = false;
+    redactOption.dispatchEvent(new Event("change"));
+    expect(document.querySelector("pre")!.textContent).toContain("abcd1234efgh5678");
+
+    click("#redact-now");
+    expect(document.querySelector("pre")!.textContent).toBe("api_key=[redacted-secret]");
+    expect(document.querySelector(".message-row.assistant")!.textContent).toContain("[redacted-email]");
+
+    click(".toast-action");
+    expect(document.querySelector("pre")!.textContent).toBe("api_key = abcd1234efgh5678");
+  });
+
+  it("closes popovers on Escape, keeps only one open and titles the tab", async () => {
+    await startReview();
+    expect(document.title).toBe("Test Chat – Chat Trail");
+    const settings = document.querySelector<HTMLDetailsElement>("#settings-popover")!;
+    const exportMenu = document.querySelector<HTMLDetailsElement>("#export-popover")!;
+    settings.open = true;
+    settings.dispatchEvent(new Event("toggle"));
+    exportMenu.open = true;
+    exportMenu.dispatchEvent(new Event("toggle"));
+    expect(settings.open).toBe(false);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(exportMenu.open).toBe(false);
+    expect(document.activeElement).toBe(exportMenu.querySelector("summary"));
+  });
+
+  it("prints through a hidden iframe instead of a blob window", async () => {
+    await startReview();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    click('[data-export="print"]');
+    await vi.waitFor(() => expect(document.querySelector("iframe")?.getAttribute("srcdoc")).toContain("Test Chat"));
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
   });
 });
