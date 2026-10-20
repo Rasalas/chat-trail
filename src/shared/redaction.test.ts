@@ -47,6 +47,8 @@ describe("redactText", () => {
       "10.0.0.1",
       "2019-2024",
       "1 000 000",
+      "1 2 3 4 5 6 7",
+      "2024/01/15",
       "12345678"
     ]) {
       expect(redactText(`value ${text} end`)).toBe(`value ${text} end`);
@@ -59,6 +61,31 @@ describe("redactText", () => {
 
   it("redacts a phone number that follows a date", () => {
     expect(redactText("on 2024-01-15 call +49 170 1234567")).toBe("on 2024-01-15 call [redacted-phone]");
+  });
+
+  it("redacts each of several phone numbers in a row", () => {
+    expect(redactText("Call +1 202-555-0123 / 202-555-0199 end")).toBe("Call [redacted-phone] / [redacted-phone] end");
+    expect(redactText("Call 202-555-0123 202-555-0199 end")).toBe("Call [redacted-phone] [redacted-phone] end");
+    expect(redactText("tel 030 1234567, 0171 2345678")).toBe("tel [redacted-phone], [redacted-phone]");
+  });
+
+  it("redacts short local numbers and international formats with an area code in parentheses", () => {
+    expect(redactText("phone: 555-0123 end")).toBe("phone: [redacted-phone] end");
+    expect(redactText("call +1 (415) 555-0132 now")).toBe("call [redacted-phone] now");
+    expect(redactText("call +4917012345678 now")).toBe("call [redacted-phone] now");
+    expect(redactText("call 017012345678 now")).toBe("call [redacted-phone] now");
+    expect(redactText("call +49 (0) 30 1234567 now")).toBe("call [redacted-phone] now");
+  });
+
+  it("keeps unseparated IDs and timestamps", () => {
+    for (const text of ["ID: 1234567890 end", "ID: 123456789012 end", "ts 1729425600 end"]) {
+      expect(redactText(text)).toBe(text);
+    }
+  });
+
+  it("keeps a date in front of a phone number instead of reading both as a card", () => {
+    expect(redactText("2026-10-20 030 12345678")).toBe("2026-10-20 [redacted-phone]");
+    expect(redactText("on 2024/01/15 call 030 1234567")).toBe("on 2024/01/15 call [redacted-phone]");
   });
 
   it("redacts IBANs with and without grouping spaces", () => {
@@ -77,6 +104,8 @@ describe("redactText", () => {
   it("redacts credit card numbers that pass the Luhn check", () => {
     expect(redactText("card 4539148803436467 on file")).toBe("card [redacted-card] on file");
     expect(redactText("card 4539 1488 0343 6467 on file")).toBe("card [redacted-card] on file");
+    expect(redactText("card 4539-1488-0343-6467 on file")).toBe("card [redacted-card] on file");
+    expect(redactText("amex 3782 822463 10005 on file")).toBe("amex [redacted-card] on file");
   });
 
   it("keeps digit runs that fail the Luhn check for other rules to handle", () => {
