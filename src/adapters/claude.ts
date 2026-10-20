@@ -14,8 +14,9 @@ export const claudeAdapter: ChatAdapter = {
     artifacts: true,
     attachments: true
   },
+  matchesHost: isClaudeHost,
   matches(url, document) {
-    return /(^|\.)claude\.ai$/.test(url.hostname) || /claude/i.test(document.title);
+    return isClaudeHost(url) || /claude/i.test(document.title);
   },
   async extract(document) {
     const conversation = createBaseConversation("claude", document);
@@ -71,6 +72,10 @@ export const claudeAdapter: ChatAdapter = {
     return [...document.querySelectorAll("[data-testid='transcript-row']")];
   }
 };
+
+function isClaudeHost(url: URL): boolean {
+  return /(^|\.)claude\.ai$/.test(url.hostname);
+}
 
 async function extractLegacy(
   document: Document,

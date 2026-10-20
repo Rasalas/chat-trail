@@ -15,6 +15,15 @@ function msg(id: string, role: ChatMessage["role"] = "user", kind?: "activity"):
   };
 }
 
+function plainMsg(role: ChatMessage["role"], text: string): ChatMessage {
+  return { id: text, role, content: [{ type: "text", text }], metadata: { visibleTextHash: `hash:${text}` } };
+}
+
+function label(message: ChatMessage): string {
+  const block = message.content[0];
+  return `${message.role}:${block.type === "text" ? block.text : ""}`;
+}
+
 describe("mergeSnapshots", () => {
   it("updates known messages from later snapshots without reordering", () => {
     const first = msg("a", "assistant");
@@ -64,6 +73,24 @@ describe("mergeSnapshots", () => {
       makeConversation([plain("two", "h2"), plain("three", "h3")])
     ]);
     expect(merged.messages.map((m) => m.content[0])).toEqual(["one", "two", "three"].map(text => ({ type: "text", text })));
+  });
+
+  it("keeps repeated texts without provider ids apart and in order within one snapshot", () => {
+    const merged = mergeSnapshots([
+      makeConversation([plainMsg("user", "continue"), plainMsg("assistant", "x"), plainMsg("user", "continue"), plainMsg("assistant", "y")])
+    ]);
+    expect(merged.messages.map(label)).toEqual(["user:continue", "assistant:x", "user:continue", "assistant:y"]);
+  });
+
+  it("lines up repeated texts without provider ids across overlapping snapshots", () => {
+    const merged = mergeSnapshots([
+      makeConversation([plainMsg("user", "continue"), plainMsg("assistant", "x"), plainMsg("user", "continue")]),
+      makeConversation([plainMsg("assistant", "x"), plainMsg("user", "continue"), plainMsg("assistant", "y")]),
+      makeConversation([plainMsg("user", "continue"), plainMsg("assistant", "y"), plainMsg("user", "continue"), plainMsg("assistant", "z")])
+    ]);
+    expect(merged.messages.map(label)).toEqual([
+      "user:continue", "assistant:x", "user:continue", "assistant:y", "user:continue", "assistant:z"
+    ]);
   });
 });
 

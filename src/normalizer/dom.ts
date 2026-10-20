@@ -76,8 +76,7 @@ export function inferRole(element: Element, index: number): ChatMessage["role"] 
       element.getAttribute("data-message-author-role"),
       element.getAttribute("data-testid"),
       element.getAttribute("aria-label"),
-      element.className?.toString(),
-      element.textContent?.slice(0, 80)
+      element.className?.toString()
     ]
       .filter(Boolean)
       .join(" ")
@@ -85,6 +84,11 @@ export function inferRole(element: Element, index: number): ChatMessage["role"] 
 
   if (/\b(user|human|you|ich|me)\b/.test(marker)) return "user";
   if (/\b(assistant|claude|chatgpt|bot|ai)\b/.test(marker)) return "assistant";
+
+  // Message text only counts as a leading speaker label, never as free-text pronouns.
+  const label = compactWhitespace(element.textContent?.slice(0, 80) ?? "").toLowerCase();
+  if (/^(you said|you|user|human|ich|du hast gesagt)\s*:/.test(label)) return "user";
+  if (/^(assistant|ai|bot|chatgpt|claude|gemini|copilot)( said)?\s*:/.test(label)) return "assistant";
   return index % 2 === 0 ? "user" : "assistant";
 }
 

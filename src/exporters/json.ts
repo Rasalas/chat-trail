@@ -14,7 +14,9 @@ export function exportJson(conversation: ConversationExport): string {
       message_count: conversation.messages.length,
       messages: conversation.messages.map((message) => ({
         role: message.role,
-        content: contentToMarkdown(message.content)
+        content: contentToMarkdown(message.content),
+        ...(message.kind ? { kind: message.kind } : {}),
+        ...(Object.keys(message.metadata).length > 0 ? { metadata: message.metadata } : {})
       }))
     },
     null,

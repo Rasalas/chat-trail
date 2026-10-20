@@ -78,6 +78,8 @@ export interface AdapterCapabilities {
 export interface ChatAdapter {
   id: ProviderId;
   label: string;
+  /** Hostname match; checked for every adapter before any `matches` heuristic. */
+  matchesHost?(url: URL): boolean;
   matches(url: URL, document: Document): boolean;
   extract(document: Document): Promise<ConversationExport>;
   capabilities: AdapterCapabilities;

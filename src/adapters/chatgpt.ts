@@ -14,8 +14,9 @@ export const chatGptAdapter: ChatAdapter = {
     artifacts: true,
     attachments: true
   },
+  matchesHost: isChatGptHost,
   matches(url, document) {
-    return /(^|\.)chatgpt\.com$/.test(url.hostname) || Boolean(document.querySelector("[data-message-author-role]"));
+    return isChatGptHost(url) || Boolean(document.querySelector("[data-message-author-role]"));
   },
   async extract(document) {
     const conversation = createBaseConversation("chatgpt", document);
@@ -85,6 +86,10 @@ export const chatGptAdapter: ChatAdapter = {
     return [...document.querySelectorAll("[data-message-author-role]")];
   }
 };
+
+function isChatGptHost(url: URL): boolean {
+  return /(^|\.)chatgpt\.com$/.test(url.hostname);
+}
 
 function roleFromTurn(element: Element, index: number): ChatMessage["role"] {
   const roleNode = element.querySelector("[data-message-author-role]");

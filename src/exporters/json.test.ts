@@ -13,9 +13,15 @@ describe("exportJson", () => {
     ]);
     const parsed = JSON.parse(exportJson(conversation));
     expect(parsed.messages).toEqual([
-      { role: "user", content: "Frage" },
-      { role: "assistant", content: "Antwort mit **Fett**.\n\n```js\nx()\n```" }
+      { role: "user", content: "Frage", metadata: { index: 0 } },
+      { role: "assistant", content: "Antwort mit **Fett**.\n\n```js\nx()\n```", metadata: { index: 1 } }
     ]);
+  });
+
+  it("keeps the message kind and omits empty metadata", () => {
+    const activity = { ...makeMessage("assistant", 0, [{ type: "text", text: "Thought for 3s" }]), kind: "activity" as const, metadata: {} };
+    const parsed = JSON.parse(exportJson(makeConversation([activity])));
+    expect(parsed.messages).toEqual([{ role: "assistant", content: "Thought for 3s", kind: "activity" }]);
   });
 
   it("keeps source metadata on top level", () => {

@@ -177,24 +177,52 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
     throw new Error("No conversation snapshots captured.");
   }
 
+  // `order` holds unique keys; repeated texts without provider ids get a `#n` suffix.
   const order: string[] = [];
+  const baseKeys = new Map<string, string>();
+  const copies = new Map<string, number>();
   const byKey = new Map<string, ChatMessage>();
+  let floorKey: string | undefined;
+
+  const locate = (message: ChatMessage, after: number, floor: number): number => {
+    const key = messageKey(message);
+    if (message.metadata.providerMessageId) return order.indexOf(key);
+    // Equal texts can repeat, so match the next copy after the cursor; the walk only moves down.
+    for (let index = Math.max(after + 1, floor); index < order.length; index += 1) {
+      if (baseKeys.get(order[index]) === key) return index;
+    }
+    return -1;
+  };
+
+  const uniqueKey = (key: string): string => {
+    const count = (copies.get(key) ?? 0) + 1;
+    const unique = count === 1 ? key : `${key}#${count}`;
+    copies.set(key, count);
+    baseKeys.set(unique, key);
+    return unique;
+  };
 
   for (const snapshot of snapshots) {
-    const firstKnown = snapshot.messages.map(messageKey).find((key) => byKey.has(key));
-    let anchor = firstKnown === undefined ? order.length - 1 : order.indexOf(firstKnown) - 1;
+    const floor = floorKey === undefined ? 0 : Math.max(0, order.indexOf(floorKey));
+    const firstKnown = snapshot.messages.map((message) => locate(message, floor - 1, floor)).find((position) => position !== -1);
+    let anchor = firstKnown === undefined ? order.length - 1 : firstKnown - 1;
+    let first: string | undefined;
+
     for (const message of snapshot.messages) {
-      const key = messageKey(message);
-      const known = order.indexOf(key);
+      const known = locate(message, anchor, floor);
+      let key: string;
       if (known !== -1) {
-        byKey.set(key, message);
+        key = order[known];
         anchor = known;
-        continue;
+      } else {
+        key = uniqueKey(messageKey(message));
+        order.splice(anchor + 1, 0, key);
+        anchor += 1;
       }
-      order.splice(anchor + 1, 0, key);
       byKey.set(key, message);
-      anchor += 1;
+      first ??= key;
     }
+    if (first !== undefined) floorKey = first;
   }
 
   const messages = order.map((key, index) => {
