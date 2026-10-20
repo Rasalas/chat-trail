@@ -110,15 +110,24 @@ export interface ExtractionFailure {
 
 export type RuntimeResponse = ExtractionResult | ExtractionFailure;
 
+export type CaptureAction = "download" | "copy" | "review";
+
 export type ContentRequest =
-  | { type: "EXTRACT_CONVERSATION"; useProviderCopy?: boolean }
+  | { type: "START_CAPTURE"; action: CaptureAction }
+  | { type: "RUN_CAPTURE"; useProviderCopy?: boolean }
+  | { type: "GET_CAPTURE_RESULT"; captureId: string }
   | { type: "GET_HTML_SNAPSHOT"; expectedUrl: string }
   | { type: "START_CONTAINER_SELECTION" };
 
 export type ContentResponse<Request extends ContentRequest> =
-  Request extends { type: "EXTRACT_CONVERSATION" } ? RuntimeResponse :
+  Request extends { type: "START_CAPTURE" } ? { ok: true; started: true } | ExtractionFailure :
+  Request extends { type: "RUN_CAPTURE" } ? { ok: true; captureId: string } | ExtractionFailure :
+  Request extends { type: "GET_CAPTURE_RESULT" } ? RuntimeResponse :
   Request extends { type: "GET_HTML_SNAPSHOT" } ? { ok: true; html: string } | ExtractionFailure :
   { ok: true; selecting: true } | ExtractionFailure;
+
+/** Sent by the content script to the background service worker. */
+export type BackgroundRequest = { type: "OPEN_REVIEW"; captureId: string };
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeImages: true,

@@ -1,18 +1,15 @@
-import { RuntimeResponse } from "./types";
-
 export interface ReviewSession {
   sourceTabId: number;
-  state: "ready" | "extracting" | "failed";
-  response?: RuntimeResponse;
-  error?: string;
+  /** Key of the capture held in memory by the source tab's content script. */
+  captureId: string;
 }
 
 const sessionKey = (id: string) => `review:${id}`;
 const tabKey = (id: number) => `review-tab:${id}`;
 
-export async function openReviewSession(sourceTabId: number, manualSelection = false): Promise<string> {
+export async function openReviewSession(sourceTabId: number, captureId: string): Promise<string> {
   const id = crypto.randomUUID();
-  await chrome.storage.session.set({ [sessionKey(id)]: { sourceTabId, state: manualSelection ? "extracting" : "ready" } });
+  await chrome.storage.session.set({ [sessionKey(id)]: { sourceTabId, captureId } satisfies ReviewSession });
   try {
     const url = new URL(chrome.runtime.getURL("src/review/index.html"));
     url.searchParams.set("session", id);
@@ -33,17 +30,9 @@ export async function readReviewSession(id: string | null): Promise<ReviewSessio
   return session;
 }
 
-export async function finishManualSelection(id: string, sourceTabId: number | undefined, result: RuntimeResponse): Promise<void> {
+export async function updateReviewCapture(id: string, captureId: string): Promise<void> {
   const session = await readReviewSession(id);
-  if (session.sourceTabId !== sourceTabId || session.state !== "extracting") {
-    throw new Error("The selection does not belong to this pending review.");
-  }
-  await chrome.storage.session.set({ [sessionKey(id)]: {
-    ...session,
-    state: result.ok ? "ready" : "failed",
-    response: result.ok ? result : undefined,
-    error: result.ok ? undefined : result.error
-  } });
+  await chrome.storage.session.set({ [sessionKey(id)]: { ...session, captureId } satisfies ReviewSession });
 }
 
 export async function closeReviewSession(reviewTabId: number): Promise<void> {

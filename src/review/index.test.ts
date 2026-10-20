@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeConversation, makeMessage } from "../testing/fixtures";
 import { ContentRequest } from "../shared/types";
+import { SOURCE_CLOSED, SOURCE_RELOADED } from "./source-capture";
 
 const download = vi.hoisted(() => vi.fn());
 vi.mock("../shared/download", () => ({
@@ -22,7 +23,7 @@ source.source.url = "https://example.com/chat/a";
 
 async function startReview() {
   const { openReviewSession } = await import("../shared/review-session");
-  const sessionId = await openReviewSession(42);
+  const sessionId = await openReviewSession(42, "cap-initial");
   window.history.replaceState(null, "", `/?session=${sessionId}`);
   await import("./index");
   await vi.waitFor(() => expect(document.querySelectorAll(".message-row")).toHaveLength(3));
@@ -66,9 +67,12 @@ beforeEach(() => {
       get: vi.fn(async (id: number) => tabs.get(id)),
       query: vi.fn(async () => [tabs.get(activeId)]),
       update: vi.fn(async (id: number) => { activeId = id; return tabs.get(id); }),
-      sendMessage: vi.fn(async (_id: number, request: ContentRequest) => request.type === "GET_HTML_SNAPSHOT"
-        ? { ok: true, html: "<p>original-person@example.com</p>" }
-        : { ok: true, conversation: structuredClone(source), adapterId: "generic", adapterLabel: "Test" }),
+      getCurrent: vi.fn(async () => tabs.get(100)),
+      sendMessage: vi.fn(async (_id: number, request: ContentRequest) => {
+        if (request.type === "GET_HTML_SNAPSHOT") return { ok: true, html: "<p>original-person@example.com</p>" };
+        if (request.type === "RUN_CAPTURE") return { ok: true, captureId: "cap-refreshed" };
+        return { ok: true, conversation: structuredClone(source), adapterId: "generic", adapterLabel: "Test" };
+      }),
       captureVisibleTab: vi.fn(async () => "data:image/png;base64,c2NyZWVuc2hvdA==")
     },
     windows: { update: vi.fn(async () => undefined) }
@@ -78,10 +82,15 @@ beforeEach(() => {
 describe("review workflow", () => {
   it("refreshes and captures from its own source after another review opens", async () => {
     const { openReviewSession } = await startReview();
-    await openReviewSession(43);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(42, { type: "GET_CAPTURE_RESULT", captureId: "cap-initial" });
+    await openReviewSession(43, "cap-other");
+    vi.mocked(chrome.tabs.update).mockClear();
     click("#refresh");
-    await vi.waitFor(() => expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2));
-    expect(chrome.tabs.sendMessage).toHaveBeenLastCalledWith(42, { type: "EXTRACT_CONVERSATION", useProviderCopy: false });
+    await vi.waitFor(() => expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(3));
+    expect(chrome.tabs.sendMessage).toHaveBeenNthCalledWith(2, 42, { type: "RUN_CAPTURE", useProviderCopy: false });
+    expect(chrome.tabs.sendMessage).toHaveBeenLastCalledWith(42, { type: "GET_CAPTURE_RESULT", captureId: "cap-refreshed" });
+    // The source tab is brought to the front for the capture, then the review tab returns.
+    expect(vi.mocked(chrome.tabs.update).mock.calls.map(([id]) => id)).toEqual([42, 100]);
     await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>("#refresh")!.disabled).toBe(false));
     document.querySelector<HTMLInputElement>("#include-original-page")!.checked = true;
     click('[data-export="zip"]');
@@ -122,5 +131,33 @@ describe("review workflow", () => {
     await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toContain("source page has changed"));
     expect(download).not.toHaveBeenCalled();
     expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
+  });
+
+  it("explains a closed source tab instead of showing the raw tab error", async () => {
+    await startReview();
+    vi.mocked(chrome.tabs.get).mockRejectedValue(new Error("No tab with id: 42."));
+    click("#refresh");
+    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe(SOURCE_CLOSED));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll(".message-row")).toHaveLength(3);
+  });
+
+  it("explains that a reloaded source tab no longer holds the capture", async () => {
+    const { openReviewSession } = await import("../shared/review-session");
+    const sessionId = await openReviewSession(42, "cap-initial");
+    window.history.replaceState(null, "", `/?session=${sessionId}`);
+    vi.mocked(chrome.tabs.sendMessage).mockRejectedValue(new Error("Could not establish connection. Receiving end does not exist."));
+    await import("./index");
+    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe(SOURCE_RELOADED));
+  });
+
+  it("keeps the current review and returns to it when the capture is cancelled", async () => {
+    await startReview();
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce({ ok: false, error: "Capture cancelled." });
+    vi.mocked(chrome.tabs.update).mockClear();
+    click("#refresh");
+    await vi.waitFor(() => expect(document.querySelector("#summary")!.textContent).toBe("Capture cancelled."));
+    expect(vi.mocked(chrome.tabs.update).mock.calls.at(-1)?.[0]).toBe(100);
+    expect(document.querySelectorAll(".message-row")).toHaveLength(3);
   });
 });

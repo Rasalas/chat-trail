@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { snapshotDocument } from "./snapshot";
 
-vi.stubGlobal("chrome", { runtime: { onMessage: { addListener: vi.fn() } } });
-
-const { snapshotHtml } = await import("./index");
+const snapshotHtml = () => snapshotDocument(document);
 
 describe("snapshotHtml", () => {
   it("removes event handlers, frames, hidden content and form values", () => {
