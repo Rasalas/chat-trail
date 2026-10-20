@@ -76,6 +76,32 @@ describe("content controller", () => {
     expect(pending.capture).toHaveBeenCalledOnce();
   });
 
+  it("refuses a second start that arrives while the first is still loading settings", async () => {
+    let releaseOptions!: () => void;
+    const storedOptions = vi.fn(() => new Promise<Record<string, never>>((done) => (releaseOptions = () => done({}))));
+    const pending = deferredCapture();
+    const { controller, deps } = setup({ storedOptions, capture: pending.capture });
+    const [first, second] = await Promise.all([
+      controller.handleMessage({ type: "START_CAPTURE", action: "review" }),
+      controller.handleMessage({ type: "START_CAPTURE", action: "review" })
+    ]);
+    expect(first).toEqual({ ok: true, started: true });
+    expect(second).toMatchObject({ ok: false });
+    releaseOptions();
+    await vi.waitFor(() => expect(deps.capture).toHaveBeenCalledTimes(1));
+  });
+
+  it("cancels a capture that is still loading settings", async () => {
+    let releaseOptions!: () => void;
+    const storedOptions = vi.fn(() => new Promise<Record<string, never>>((done) => (releaseOptions = () => done({}))));
+    const { controller, deps, handlers, last } = setup({ storedOptions });
+    await controller.handleMessage({ type: "START_CAPTURE", action: "review" });
+    handlers().onCancel();
+    releaseOptions();
+    await vi.waitFor(() => expect(last()).toMatchObject({ text: CAPTURE_CANCELLED }));
+    expect(deps.capture).not.toHaveBeenCalled();
+  });
+
   it("cancels a running capture from the pill and reports it", async () => {
     const pending = deferredCapture();
     const { controller, handlers, last } = setup({ capture: pending.capture });

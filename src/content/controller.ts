@@ -57,7 +57,7 @@ export function createContentController(deps: ContentDeps) {
       case "RUN_CAPTURE": {
         if (busy()) return busyError;
         try {
-          const result = await capture(Boolean(request.useProviderCopy));
+          const result = await capture(() => Boolean(request.useProviderCopy));
           const captureId = store(result);
           pill.show({ kind: "done", text: `Captured ${result.conversation.messages.length} messages. Returning to the review…` });
           return { ok: true, captureId };
@@ -80,14 +80,17 @@ export function createContentController(deps: ContentDeps) {
     }
   }
 
-  async function capture(useProviderCopy: boolean): Promise<ExtractionResult> {
+  // Marks the page busy synchronously, before the first await, so concurrent starts are refused.
+  async function capture(useProviderCopy: () => boolean | Promise<boolean>): Promise<ExtractionResult> {
     const controller = new AbortController();
     running = controller;
     const sourceUrl = deps.currentUrl();
     try {
       pill.show({ kind: "loading", round: 1 });
+      const providerCopy = await useProviderCopy();
+      controller.signal.throwIfAborted();
       const result = await deps.capture({
-        useProviderCopy,
+        useProviderCopy: providerCopy,
         signal: controller.signal,
         onProgress: (progress) =>
           pill.show(progress.phase === "loading" ? { kind: "loading", round: progress.round } : { kind: "reading", count: progress.count })
@@ -101,8 +104,7 @@ export function createContentController(deps: ContentDeps) {
 
   async function runAction(action: CaptureAction): Promise<void> {
     try {
-      const options = action === "review" ? await deps.storedOptions() : {};
-      const result = await capture(Boolean(options.useProviderCopy));
+      const result = await capture(async () => action === "review" && Boolean((await deps.storedOptions()).useProviderCopy));
       if (action === "review") {
         await openReview(result);
         return;
