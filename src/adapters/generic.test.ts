@@ -42,3 +42,18 @@ describe("genericAdapter against the fixture page", () => {
     expect(conversation.manifest.extension_version).toBe("0.0.0-test");
   });
 });
+
+describe("genericAdapter with short messages", () => {
+  it("keeps short prompts that carry a role marker, but not short unmarked blocks", async () => {
+    const page = new Window({ url: "https://example.org/chat" });
+    page.document.write(`<main>
+      <article data-role="user" class="user-message"><p>continue</p></article>
+      <article data-role="assistant" class="assistant-message"><p>A longer synthetic reply sentence.</p></article>
+      <article class="message"><p>Copy</p></article>
+      <article data-role="user" class="user-message"><p>continue</p></article>
+      <article data-role="assistant" class="assistant-message"><p>Another synthetic reply sentence.</p></article>
+    </main>`);
+    const conversation = await genericAdapter.extract(page.document as unknown as Document);
+    expect(conversation.messages.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant"]);
+  });
+});

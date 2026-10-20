@@ -143,12 +143,12 @@ function findLikelyMessages(root: ParentNode): Element[] {
       "[class*='response' i]"
     ],
     root
-  ).filter(isLikelyMessage);
+  ).filter((element) => isLikelyMessage(element, hasMessageMarker(element)));
 
   if (direct.length >= 2) return removeNestedDuplicates(direct);
 
   const blocks = [...root.querySelectorAll("p, li, pre, blockquote, section, div")]
-    .filter(isLikelyMessage)
+    .filter((element) => isLikelyMessage(element))
     .filter((element) => compactWhitespace(element.textContent ?? "").length > 24);
 
   return removeNestedDuplicates(blocks).slice(0, 80);
@@ -161,13 +161,18 @@ function scoreChatRoot(element: Element): number {
   return messages * 4 + roleWords + Math.min(text.length / 1000, 20);
 }
 
-function isLikelyMessage(element: Element): boolean {
+// Marked messages may be as short as "continue"; unmarked blocks need more text to count.
+function isLikelyMessage(element: Element, marked = false): boolean {
   const text = compactWhitespace(element.textContent ?? "");
   if (text.length < 2) return false;
   if (element.matches("nav, header, footer, aside, form, input, textarea, button")) return false;
-  if (text.length < 16 && !element.querySelector("pre, code, table, img")) return false;
+  if (!marked && text.length < 16 && !element.querySelector("pre, code, table, img")) return false;
   const interactive = element.querySelectorAll("button, input, textarea, select").length;
   return interactive < 8;
+}
+
+function hasMessageMarker(element: Element): boolean {
+  return element.hasAttribute("data-message-id") || explicitChatRole(element) !== undefined;
 }
 
 function removeNestedDuplicates(elements: Element[]): Element[] {

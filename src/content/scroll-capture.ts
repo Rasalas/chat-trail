@@ -32,6 +32,8 @@ export interface ScrollCaptureOptions {
 
 interface Extracted {
   snapshots: ConversationExport[];
+  /** Per snapshot, the scroll-content top of each message (same order), when the DOM mapped 1:1. */
+  tops?: Array<number[] | undefined>;
   reachedBottom: boolean;
 }
 
@@ -54,13 +56,13 @@ export async function extractWithScrollCapture(
   try {
     const loaded = scroll.loadsOlderOnTop ? await loadOlderMessages(scroller, messageRoots, options) : true;
     // Without virtualisation every loaded turn is mounted, so one extraction sees them all.
-    const { snapshots, reachedBottom } = scroll.virtualised
+    const { snapshots, tops, reachedBottom } = scroll.virtualised
       ? await walkAndExtract(adapter, document, scroller, messageRoots, options)
       : await extractOnce(adapter, document, options);
     const reasons: NonNullable<ConversationExport["capture"]>["reasons"] = [];
     if (!loaded) reasons.push("load-limit");
     if (!reachedBottom) reasons.push("walk-limit");
-    return { ...mergeSnapshots(snapshots), capture: { status: reasons.length ? "incomplete" : "complete", reasons } };
+    return { ...mergeSnapshots(snapshots, tops), capture: { status: reasons.length ? "incomplete" : "complete", reasons } };
   } finally {
     // Loading older turns grows the thread, so the bottom moves.
     scroller.scrollTop = wasAtBottom ? maxScrollTop(scroller) : Math.min(originalTop, maxScrollTop(scroller));
@@ -116,6 +118,7 @@ async function walkAndExtract(
   { signal, onProgress }: ScrollCaptureOptions
 ): Promise<Extracted> {
   const snapshots: ConversationExport[] = [];
+  const tops: Array<number[] | undefined> = [];
   const seen = new Set<string>();
   let rendered = "";
   let bottomRounds = 0;
@@ -130,10 +133,11 @@ async function walkAndExtract(
   for (let step = 0; step < walkBudget(scroller); step += 1) {
     signal?.throwIfAborted();
     const roots = messageRoots();
-    const signature = renderedSignature(roots);
+    const signature = renderedSignature(scroller, roots);
     if (snapshots.length === 0 || roots.length === 0 || rendered !== signature || bottomRounds > 0) {
       const snapshot = await adapter.extract(document);
       snapshots.push(snapshot);
+      tops.push(messageTops(scroller, messageRoots(), snapshot.messages));
       rendered = signature;
       // Approximate running count for progress only; the merge decides the real result.
       for (const message of snapshot.messages) {
@@ -146,7 +150,7 @@ async function walkAndExtract(
     const before = scroller.scrollTop;
     if (before >= maxTop - 1) {
       bottomRounds += 1;
-      if (bottomRounds >= 2) return { snapshots, reachedBottom: true };
+      if (bottomRounds >= 2) return { snapshots, tops, reachedBottom: true };
     } else {
       bottomRounds = 0;
     }
@@ -162,7 +166,31 @@ async function walkAndExtract(
     }
   }
 
-  return { snapshots, reachedBottom: false };
+  return { snapshots, tops, reachedBottom: false };
+}
+
+// Positions tell repeated texts apart ("continue", identical replies). Only trusted when every root
+// visibly holds the message at the same index.
+function messageTops(scroller: HTMLElement, roots: Element[], messages: ChatMessage[]): number[] | undefined {
+  if (roots.length === 0 || roots.length !== messages.length) return undefined;
+  const tops: number[] = [];
+  for (const [index, root] of roots.entries()) {
+    const text = messages[index].content.find((block) => block.type === "text")?.text;
+    const probe = text ? compact(text).slice(0, 40) : "";
+    if (probe && !compact(root.textContent ?? "").includes(probe)) return undefined;
+    tops.push(contentTop(scroller, root));
+  }
+  return tops;
+}
+
+// Position inside the scrolled content, so it does not change while scrolling.
+function contentTop(scroller: HTMLElement, element: Element): number {
+  const isRoot = scroller === scroller.ownerDocument.scrollingElement;
+  return element.getBoundingClientRect().top - scroller.getBoundingClientRect().top + (isRoot ? 0 : scroller.scrollTop);
+}
+
+function compact(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function stride(scroller: HTMLElement): number {
@@ -175,9 +203,10 @@ function walkBudget(scroller: HTMLElement): number {
 }
 
 // Far cheaper than serialising outerHTML; the text/image hash still catches a virtualiser that reuses an
-// element for a different message.
-function renderedSignature(roots: Element[]): string {
-  return roots
+// element for a different message. The first row's place tells apart windows of identical messages.
+function renderedSignature(scroller: HTMLElement, roots: Element[]): string {
+  const place = roots[0] ? Math.round(contentTop(scroller, roots[0])) : 0;
+  return `${place}@` + roots
     .map((root) => {
       const id = root.getAttribute("data-message-id") ?? root.getAttribute("data-index") ?? root.id;
       const images = [...root.querySelectorAll("img")].map((image) => image.currentSrc || image.src).join(" ");
@@ -264,7 +293,9 @@ export function waitForDomIdle(
 }
 
 // Snapshots overlap; unknown messages are inserted right after the nearest already-known predecessor.
-export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExport {
+// Without provider ids equal texts are ambiguous, so `tops` (see messageTops) pick the copy at the same
+// place; a uniform shift (content above grew) is measured from unambiguous messages and subtracted.
+export function mergeSnapshots(snapshots: ConversationExport[], tops: Array<number[] | undefined> = []): ConversationExport {
   const base = snapshots.at(-1) ?? snapshots[0];
   if (!base) {
     throw new Error("No conversation snapshots captured.");
@@ -275,14 +306,17 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
   const baseKeys = new Map<string, string>();
   const copies = new Map<string, number>();
   const byKey = new Map<string, ChatMessage>();
+  const topByKey = new Map<string, number>();
   let floorKey: string | undefined;
 
-  const locate = (message: ChatMessage, after: number, floor: number): number => {
+  const locate = (message: ChatMessage, after: number, floor: number, top?: { at: number; tolerance: number }): number => {
     const key = messageKey(message);
     if (message.metadata.providerMessageId) return order.indexOf(key);
     // Equal texts can repeat, so match the next copy after the cursor; the walk only moves down.
     for (let index = Math.max(after + 1, floor); index < order.length; index += 1) {
-      if (baseKeys.get(order[index]) === key) return index;
+      if (baseKeys.get(order[index]) !== key) continue;
+      const known = topByKey.get(order[index]);
+      if (top === undefined || known === undefined || Math.abs(known - top.at) <= top.tolerance) return index;
     }
     return -1;
   };
@@ -295,14 +329,17 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
     return unique;
   };
 
-  for (const snapshot of snapshots) {
+  for (const [snapshotIndex, snapshot] of snapshots.entries()) {
+    const positions = positionsFor(snapshot.messages, tops[snapshotIndex], (key) => (copies.get(key) === 1 ? topByKey.get(key) : undefined));
     const floor = floorKey === undefined ? 0 : Math.max(0, order.indexOf(floorKey));
-    const firstKnown = snapshot.messages.map((message) => locate(message, floor - 1, floor)).find((position) => position !== -1);
+    const firstKnown = snapshot.messages
+      .map((message, index) => locate(message, floor - 1, floor, positions?.[index]))
+      .find((position) => position !== -1);
     let anchor = firstKnown === undefined ? order.length - 1 : firstKnown - 1;
     let first: string | undefined;
 
-    for (const message of snapshot.messages) {
-      const known = locate(message, anchor, floor);
+    for (const [index, message] of snapshot.messages.entries()) {
+      const known = locate(message, anchor, floor, positions?.[index]);
       let key: string;
       if (known !== -1) {
         key = order[known];
@@ -313,6 +350,7 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
         anchor += 1;
       }
       byKey.set(key, message);
+      if (positions) topByKey.set(key, positions[index].at);
       first ??= key;
     }
     if (first !== undefined) floorKey = first;
@@ -333,6 +371,29 @@ export function mergeSnapshots(snapshots: ConversationExport[]): ConversationExp
       }
     }
   };
+}
+
+// Shifts a snapshot's tops into the coordinates already recorded and allows half a message of drift.
+function positionsFor(
+  messages: ChatMessage[],
+  tops: number[] | undefined,
+  uniqueTop: (key: string) => number | undefined
+): Array<{ at: number; tolerance: number }> | undefined {
+  if (!tops || tops.length !== messages.length) return undefined;
+  const keys = messages.map(messageKey);
+  const shifts = keys
+    .map((key, index) => {
+      const known = keys.indexOf(key) === keys.lastIndexOf(key) ? uniqueTop(key) : undefined;
+      return known === undefined ? undefined : tops[index] - known;
+    })
+    .filter((shift): shift is number => shift !== undefined)
+    .sort((a, b) => a - b);
+  const shift = shifts.length ? shifts[Math.floor(shifts.length / 2)] : 0;
+  return tops.map((top, index) => {
+    const gap = (tops[index + 1] ?? Infinity) - top;
+    const height = Number.isFinite(gap) && gap > 0 ? gap : (top - (tops[index - 1] ?? top)) || 0;
+    return { at: top - shift, tolerance: Math.max(12, height / 2) };
+  });
 }
 
 function messageKey(message: ChatMessage): string {
