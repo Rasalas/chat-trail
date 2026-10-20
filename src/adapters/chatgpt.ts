@@ -14,6 +14,7 @@ export const chatGptAdapter: ChatAdapter = {
     artifacts: true,
     attachments: true
   },
+  scroll: { loadsOlderOnTop: true, virtualised: true },
   matchesHost: isChatGptHost,
   matches(url, document) {
     return isChatGptHost(url) || Boolean(document.querySelector("[data-message-author-role]"));

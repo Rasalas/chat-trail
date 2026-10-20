@@ -1,12 +1,23 @@
 import { setProviderCopyEnabled } from "../normalizer/copy-enhancement";
-import { ChatAdapter, ChatMessage, ConversationExport } from "../shared/types";
+import { beginImageCache, endImageCache } from "../normalizer/dom";
+import { stableId } from "../shared/hash";
+import { ChatAdapter, ChatMessage, ConversationExport, ScrollBehaviour } from "../shared/types";
 
 const IDLE_QUIET_MS = 250;
 const IDLE_MAX_MS = 2500;
 const LOAD_MIN_WAIT_MS = 400;
 const LOAD_CONFIRM_WAIT_MS = 1500;
 const LOAD_MAX_ROUNDS = 60;
-const WALK_MAX_STEPS = 200;
+const MIN_STRIDE_PX = 420;
+// The walk budget follows the thread height (twice the steps it needs, plus slack); the cap only stops pages
+// that keep growing while we walk.
+const WALK_STEP_SLACK = 20;
+const WALK_MAX_STEPS = 3000;
+// Steps in a row in which setting scrollTop moved nothing (the page pins the view or ignores it).
+const WALK_STUCK_STEPS = 3;
+
+// Unknown pages may do either, so they get the full (slow) treatment.
+const UNKNOWN_SCROLL: ScrollBehaviour = { loadsOlderOnTop: true, virtualised: true };
 
 const GENERIC_MESSAGE_SELECTOR = "[data-message-author-role], [data-testid='transcript-row'], article, [role='listitem']";
 
@@ -19,6 +30,11 @@ export interface ScrollCaptureOptions {
   onProgress?: (progress: CaptureProgress) => void;
 }
 
+interface Extracted {
+  snapshots: ConversationExport[];
+  reachedBottom: boolean;
+}
+
 export async function extractWithScrollCapture(
   adapter: ChatAdapter,
   document: Document,
@@ -28,14 +44,19 @@ export async function extractWithScrollCapture(
     const roots = adapter.messageElements?.(document);
     return roots?.length ? roots : genericMessageElements(document);
   };
+  const scroll = adapter.scroll ?? UNKNOWN_SCROLL;
   options.signal?.throwIfAborted();
   const scroller = findScroller(document, messageRoots());
   const originalTop = scroller.scrollTop;
   const wasAtBottom = originalTop >= maxScrollTop(scroller) - 1;
   setProviderCopyEnabled(Boolean(options.useProviderCopy));
+  beginImageCache();
   try {
-    const loaded = await loadOlderMessages(scroller, messageRoots, options);
-    const { snapshots, reachedBottom } = await walkAndExtract(adapter, document, scroller, messageRoots, options);
+    const loaded = scroll.loadsOlderOnTop ? await loadOlderMessages(scroller, messageRoots, options) : true;
+    // Without virtualisation every loaded turn is mounted, so one extraction sees them all.
+    const { snapshots, reachedBottom } = scroll.virtualised
+      ? await walkAndExtract(adapter, document, scroller, messageRoots, options)
+      : await extractOnce(adapter, document, options);
     const reasons: NonNullable<ConversationExport["capture"]>["reasons"] = [];
     if (!loaded) reasons.push("load-limit");
     if (!reachedBottom) reasons.push("walk-limit");
@@ -44,6 +65,7 @@ export async function extractWithScrollCapture(
     // Loading older turns grows the thread, so the bottom moves.
     scroller.scrollTop = wasAtBottom ? maxScrollTop(scroller) : Math.min(originalTop, maxScrollTop(scroller));
     setProviderCopyEnabled(false);
+    endImageCache();
   }
 }
 
@@ -74,6 +96,17 @@ async function loadOlderMessages(
   return false;
 }
 
+async function extractOnce(
+  adapter: ChatAdapter,
+  document: Document,
+  { signal, onProgress }: ScrollCaptureOptions
+): Promise<Extracted> {
+  signal?.throwIfAborted();
+  const snapshot = await adapter.extract(document);
+  onProgress?.({ phase: "reading", count: snapshot.messages.length });
+  return { snapshots: [snapshot], reachedBottom: true };
+}
+
 // Virtualised lists only render turns near the viewport, so we snapshot while walking down.
 async function walkAndExtract(
   adapter: ChatAdapter,
@@ -81,20 +114,23 @@ async function walkAndExtract(
   scroller: HTMLElement,
   messageRoots: () => Element[],
   { signal, onProgress }: ScrollCaptureOptions
-): Promise<{ snapshots: ConversationExport[]; reachedBottom: boolean }> {
+): Promise<Extracted> {
   const snapshots: ConversationExport[] = [];
   const seen = new Set<string>();
   let rendered = "";
   let bottomRounds = 0;
+  let stuckSteps = 0;
 
-  scroller.scrollTop = 0;
-  await waitForDomIdle(scroller, { signal });
+  // After loading older turns the view is already at the top and the DOM is idle.
+  if (scroller.scrollTop > 0) {
+    scroller.scrollTop = 0;
+    await waitForDomIdle(scroller, { signal });
+  }
 
-  for (let step = 0; step < WALK_MAX_STEPS; step += 1) {
+  for (let step = 0; step < walkBudget(scroller); step += 1) {
     signal?.throwIfAborted();
     const roots = messageRoots();
-    // Virtualisers can reuse the same elements for different messages.
-    const signature = JSON.stringify(roots.map((root) => root.outerHTML));
+    const signature = renderedSignature(roots);
     if (snapshots.length === 0 || roots.length === 0 || rendered !== signature || bottomRounds > 0) {
       const snapshot = await adapter.extract(document);
       snapshots.push(snapshot);
@@ -107,19 +143,47 @@ async function walkAndExtract(
     }
 
     const maxTop = maxScrollTop(scroller);
-    if (scroller.scrollTop >= maxTop - 1) {
+    const before = scroller.scrollTop;
+    if (before >= maxTop - 1) {
       bottomRounds += 1;
       if (bottomRounds >= 2) return { snapshots, reachedBottom: true };
     } else {
       bottomRounds = 0;
     }
 
-    const stride = Math.max(420, Math.floor(scroller.clientHeight * 0.8));
-    scroller.scrollTop = Math.min(maxTop, scroller.scrollTop + stride);
+    scroller.scrollTop = Math.min(maxTop, before + stride(scroller));
     await waitForDomIdle(scroller, { signal });
+
+    if (bottomRounds === 0 && scroller.scrollTop <= before) {
+      stuckSteps += 1;
+      if (stuckSteps >= WALK_STUCK_STEPS) break;
+    } else {
+      stuckSteps = 0;
+    }
   }
 
   return { snapshots, reachedBottom: false };
+}
+
+function stride(scroller: HTMLElement): number {
+  return Math.max(MIN_STRIDE_PX, Math.floor(scroller.clientHeight * 0.8));
+}
+
+// Recomputed every step because loading or lazy content can still grow the thread.
+function walkBudget(scroller: HTMLElement): number {
+  return Math.min(WALK_MAX_STEPS, Math.ceil(scroller.scrollHeight / stride(scroller)) * 2 + WALK_STEP_SLACK);
+}
+
+// Far cheaper than serialising outerHTML; the text/image hash still catches a virtualiser that reuses an
+// element for a different message.
+function renderedSignature(roots: Element[]): string {
+  return roots
+    .map((root) => {
+      const id = root.getAttribute("data-message-id") ?? root.getAttribute("data-index") ?? root.id;
+      const images = [...root.querySelectorAll("img")].map((image) => image.currentSrc || image.src).join(" ");
+      return `${id}:${root.childElementCount}:${stableId("r", `${root.textContent ?? ""}\n${images}`)}`;
+    })
+    .join("|");
 }
 
 function findScroller(document: Document, roots: Element[]): HTMLElement {

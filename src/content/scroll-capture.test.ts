@@ -98,7 +98,7 @@ describe("mergeSnapshots", () => {
  * Simulates a ChatGPT-style thread: 30 turns, paginated upwards in pages of 10,
  * and virtualised so only the turns near the viewport are mounted.
  */
-function buildVirtualThread(total = 30, page = 10, turnHeight = 300, viewport = 800) {
+function buildVirtualThread(total = 30, page = 10, turnHeight = 300, viewport = 800, virtualised = true) {
   document.body.innerHTML = `<div id="root"><div id="scroller"><main><div id="thread"></div></main></div></div>`;
   const scroller = document.getElementById("scroller") as HTMLElement;
   const thread = document.getElementById("thread") as HTMLElement;
@@ -130,8 +130,8 @@ function buildVirtualThread(total = 30, page = 10, turnHeight = 300, viewport = 
 
   function render() {
     const firstVisible = loadedFrom + Math.floor(scrollTop / turnHeight);
-    const from = Math.max(loadedFrom, firstVisible - 2);
-    const to = Math.min(total, firstVisible + Math.ceil(viewport / turnHeight) + 2);
+    const from = virtualised ? Math.max(loadedFrom, firstVisible - 2) : loadedFrom;
+    const to = virtualised ? Math.min(total, firstVisible + Math.ceil(viewport / turnHeight) + 2) : total;
     thread.innerHTML = "";
     for (let i = from; i < to; i += 1) {
       const el = document.createElement("div");
@@ -256,15 +256,131 @@ describe("extractWithScrollCapture", () => {
       vi.useRealTimers();
     }
   });
-  it("reports an incomplete capture when the walk limit is reached", async () => {
+  it("sizes the walk to the thread, so tall threads complete", async () => {
     vi.useFakeTimers();
     try {
+      // 300 tall turns need ~470 steps, beyond the old fixed limit of 200.
       buildVirtualThread(300, 300, 1000);
       const pending = extractWithScrollCapture(fakeAdapter, document);
       await vi.runAllTimersAsync();
       const conversation = await pending;
-      expect(conversation.messages.length).toBeLessThan(300);
+      expect(conversation.messages).toHaveLength(300);
+      expect(conversation.capture).toEqual({ status: "complete", reasons: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports an incomplete walk when the page stops scrolling, without burning the whole budget", async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<div id="scroller" style="overflow-y:auto"><article data-message-author-role="user" data-message-id="m0">Turn 0</article></div>';
+      const scroller = document.getElementById("scroller")!;
+      let top = 0;
+      Object.defineProperties(scroller, {
+        clientHeight: { get: () => 800 },
+        scrollHeight: { get: () => 10000 },
+        // The page pins the view at 2000px.
+        scrollTop: { get: () => top, set: (value: number) => { top = Math.min(value, 2000); } }
+      });
+      const pending = extractWithScrollCapture({ ...fakeAdapter, scroll: { loadsOlderOnTop: false, virtualised: true } }, document);
+      const started = Date.now();
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
       expect(conversation.capture).toEqual({ status: "incomplete", reasons: ["walk-limit"] });
+      // ~4 steps to reach 2000px plus 3 stuck steps, at ~250ms each, instead of ~45 budgeted steps.
+      expect(Date.now() - started).toBeLessThan(3000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("detects a reused element whose text changes without any id attribute", async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<div id="scroller" style="overflow-y:auto"><article data-message-author-role="assistant">Turn 0</article></div>';
+      const scroller = document.getElementById("scroller")!;
+      const row = scroller.firstElementChild!;
+      let top = 0;
+      Object.defineProperties(scroller, {
+        clientHeight: { get: () => 800 },
+        scrollHeight: { get: () => 3000 },
+        scrollTop: { get: () => top, set: (value: number) => {
+          top = value;
+          // Same length, same element, no ids: only the text tells the messages apart.
+          row.textContent = `Turn ${Math.floor(value / 1000)}`;
+        } }
+      });
+      const pending = extractWithScrollCapture(fakeAdapter, document);
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(conversation.messages.map((message) => message.content[0])).toEqual(
+        ["Turn 0", "Turn 1", "Turn 2"].map((text) => ({ type: "text", text }))
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips loading older turns when the adapter does not paginate", async () => {
+    vi.useFakeTimers();
+    try {
+      // The fake would page in older turns at the top; a non-paginating adapter must not wait for that.
+      buildVirtualThread(30, 10);
+      const progress: string[] = [];
+      const pending = extractWithScrollCapture(
+        { ...fakeAdapter, scroll: { loadsOlderOnTop: false, virtualised: true } },
+        document,
+        { onProgress: (update) => progress.push(update.phase) }
+      );
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(progress).not.toContain("loading");
+      expect(conversation.capture?.status).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is quicker on a short chat when the adapter does not paginate", async () => {
+    vi.useFakeTimers();
+    try {
+      const elapsed = async (adapter: ChatAdapter) => {
+        buildVirtualThread(2, 2, 300);
+        const started = Date.now();
+        const pending = extractWithScrollCapture(adapter, document);
+        await vi.runAllTimersAsync();
+        await pending;
+        return Date.now() - started;
+      };
+      const unknown = await elapsed(fakeAdapter);
+      const claudeLike = await elapsed({ ...fakeAdapter, scroll: { loadsOlderOnTop: false, virtualised: true } });
+      // The load phase alone costs at least LOAD_MIN_WAIT_MS + LOAD_CONFIRM_WAIT_MS.
+      expect(unknown - claudeLike).toBeGreaterThanOrEqual(1900);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("loads older turns then extracts once when the thread is not virtualised", async () => {
+    vi.useFakeTimers();
+    try {
+      const { scroller } = buildVirtualThread(30, 10, 300, 800, false);
+      const extractSpy = vi.spyOn(fakeAdapter, "extract");
+      const counts: number[] = [];
+      const pending = extractWithScrollCapture(
+        { ...fakeAdapter, scroll: { loadsOlderOnTop: true, virtualised: false } },
+        document,
+        { onProgress: (update) => { if (update.phase === "reading") counts.push(update.count); } }
+      );
+      await vi.runAllTimersAsync();
+      const conversation = await pending;
+      expect(conversation.messages.map((m) => m.metadata.providerMessageId)).toEqual(Array.from({ length: 30 }, (_, i) => `m${i}`));
+      expect(conversation.capture?.status).toBe("complete");
+      expect(extractSpy).toHaveBeenCalledTimes(1);
+      expect(counts).toEqual([30]);
+      expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
+      extractSpy.mockRestore();
     } finally {
       vi.useRealTimers();
     }
