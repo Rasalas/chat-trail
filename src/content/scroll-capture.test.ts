@@ -92,6 +92,30 @@ describe("mergeSnapshots", () => {
       "user:continue", "assistant:x", "user:continue", "assistant:y", "user:continue", "assistant:z"
     ]);
   });
+
+  it("uses positions to keep fully repeating threads complete", () => {
+    // 120 messages alternating two identical texts, 70 px each, seen through 20-message windows.
+    const thread = Array.from({ length: 120 }, (_, i) => (i % 2 ? plainMsg("assistant", "same reply") : plainMsg("user", "continue")));
+    const snapshots: ConversationExport[] = [];
+    const tops: number[][] = [];
+    for (let start = 0; start < 120; start += 8) {
+      const window = thread.slice(start, start + 20).map((message) => ({ ...message }));
+      snapshots.push(makeConversation(window));
+      tops.push(window.map((_, i) => (start + i) * 70));
+    }
+    expect(mergeSnapshots(snapshots).messages.length).toBeLessThan(120);
+    expect(mergeSnapshots(snapshots, tops).messages.map(label)).toEqual(thread.map(label));
+  });
+
+  it("matches positions after content above shifted the thread", () => {
+    const thread = ["a", "continue", "b", "continue", "c", "continue", "d", "continue"].map((text) => plainMsg("user", text));
+    const merged = mergeSnapshots(
+      [makeConversation(thread.slice(0, 6)), makeConversation(thread.slice(2, 8))],
+      // An image above loaded between the snapshots and pushed everything down by 300 px.
+      [[0, 70, 140, 210, 280, 350], [440, 510, 580, 650, 720, 790]]
+    );
+    expect(merged.messages.map(label)).toEqual(thread.map(label));
+  });
 });
 
 /**
